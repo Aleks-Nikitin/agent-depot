@@ -1,0 +1,46 @@
+import { z } from "zod";
+import { getDb } from "../db/prisma";
+import { createRegistry, type ToolDefinition } from "../agents/tools/registry";
+
+const querySchema = z.object({ query: z.string().trim().min(1).max(500) }).strict();
+const ticketSchema = z.object({ subject: z.string().trim().min(1).max(200) }).strict();
+const policies = [
+  { id: "returns", text: "Unused products can be returned within 30 days with proof of purchase." },
+  { id: "shipping", text: "Standard shipping takes 3 to 5 business days." },
+];
+export const demoTools: ToolDefinition[] = [
+  {
+    id: "knowledge_search", description: "Search the prepared demo company policy documents.",
+    kind: "read", inputSchema: querySchema,
+    async run(input) {
+      const { query } = querySchema.parse(input);
+      const words = query.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+      return { source: "demo_policy_dataset", matches: policies.filter(p => words.some(w => p.text.toLowerCase().includes(w))) };
+    },
+  },
+  {
+    id: "sales_lookup", description: "Retrieve the prepared demo product sales figures (USD).",
+    kind: "read", inputSchema: querySchema,
+    async run(input) {
+      querySchema.parse(input);
+      return { source: "demo_sales_dataset", currency: "USD", rows: [
+        { product: "Protein", units: 120, revenue: 3600 },
+        { product: "Training shirt", units: 80, revenue: 2000 },
+      ] };
+    },
+  },
+  {
+    id: "create_ticket", description: "Create a support ticket in the local demo database. Requires approval.",
+    kind: "write", inputSchema: ticketSchema,
+    async run(input, context) {
+      context.signal.throwIfAborted();
+      const { subject } = ticketSchema.parse(input);
+      return getDb().demoTicket.upsert({
+        where: { idempotencyKey: context.idempotencyKey }, update: {},
+        create: { ownerId: context.ownerId, subject, idempotencyKey: context.idempotencyKey },
+        select: { id: true, subject: true },
+      });
+    },
+  },
+];
+export const demoRegistry = createRegistry(demoTools);

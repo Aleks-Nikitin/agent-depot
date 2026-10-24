@@ -9,7 +9,7 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
+developer-2-runtime-plan.md
 # testing
 /coverage
 
@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Generated Prisma client
+/generated/prisma/
+!.env.example

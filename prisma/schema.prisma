@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RunStatus {
+  running
+  waiting_approval
+  completed
+  blocked
+  failed
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+model Agent {
+  id        String   @id @default(uuid())
+  ownerId   String
+  name      String
+  version   Int      @default(1)
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model AgentRun {
+  id             String     @id @default(uuid())
+  ownerId        String
+  agentId        String
+  configSnapshot Json
+  status         RunStatus  @default(running)
+  sequence       Int        @default(0)
+  version        Int        @default(0)
+  checkpoint     Json?
+  response       String?
+  stopReason     String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  finishedAt     DateTime?
+  events         RunEvent[]
+  approvals      Approval[]
+
+  @@index([ownerId, createdAt])
+  @@index([agentId, createdAt])
+}
+
+model RunEvent {
+  eventId   String   @id @default(uuid())
+  runId     String
+  sequence  Int
+  type      String
+  payload   Json
+  timestamp DateTime @default(now())
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sequence])
+}
+
+model Approval {
+  id         String         @id @default(uuid())
+  runId      String
+  toolCallId String
+  toolId     String
+  input      Json
+  status     ApprovalStatus @default(pending)
+  expiresAt  DateTime
+  decidedAt  DateTime?
+  decidedBy  String?
+  run        AgentRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, toolCallId])
+}
+
+model DemoTicket {
+  id             String   @id @default(uuid())
+  ownerId        String
+  idempotencyKey String   @unique
+  subject        String
+  createdAt      DateTime @default(now())
+}
