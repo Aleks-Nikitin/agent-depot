@@ -5,7 +5,7 @@ import { getDb } from "../../db/prisma";
 import { supportAgent, salesAgent } from "../fixtures";
 import { PrismaRunStore } from "../storage/prisma-store";
 import { createRegistry } from "../tools/registry";
-import { runAgent } from "./run-agent";
+import { runAgent, resumeAgent } from "./run-agent";
 import type { ModelDriver, ModelTurn } from "./model";
 import type { PendingCall } from "./state";
 import type { AgentConfig, RunStep } from "../contracts";
@@ -87,4 +87,29 @@ it("evaluations deny writes and continue without opening approval waits", async 
   ]), "deny");
   expect(result.status).toBe("completed"); expect(tools.run).not.toHaveBeenCalled();
   expect(events.some(e => e.type === "approval_required")).toBe(false);
+});
+
+it("pauses before writes and resumes a stored call only once after approval", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "write", input: { query: "original" } }), answer("Ticket created.")]);
+  const { result, events, tools } = await execute(supportAgent, model);
+  expect(result.status).toBe("waiting_approval"); expect(tools.run).not.toHaveBeenCalled();
+  const event = events.find(e => e.type === "approval_required");
+  if (!event || event.type !== "approval_required") throw new Error("missing approval");
+  const deps = { store: new PrismaRunStore(db), driver: model, registry: tools.tools };
+  const resumed = await resumeAgent({ approvalId: event.payload.approvalId, ownerId: "demo", approved: true }, deps);
+  expect(resumed.status).toBe("completed"); expect(resumed.runId).toBe(result.runId);
+  expect(tools.run).toHaveBeenCalledOnce(); expect(tools.run).toHaveBeenCalledWith({ query: "original" }, expect.anything());
+  await expect(resumeAgent({ approvalId: event.payload.approvalId, ownerId: "demo", approved: true }, deps)).rejects.toThrow("approval_unavailable");
+  expect((await store.loadRun(result.runId, "demo")).state.modelCalls).toBe(2);
+});
+it("human rejection prevents side effects and preserves model limits across resume", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "write", input: { query: "test" } }), answer()]);
+  const { result, events, tools } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, maxModelCalls: 1 } }, model);
+  const event = events.find(e => e.type === "approval_required");
+  if (!event || event.type !== "approval_required") throw new Error("missing approval");
+  const resumed = await resumeAgent({ approvalId: event.payload.approvalId, ownerId: "demo", approved: false }, {
+    store, driver: model, registry: tools.tools,
+  });
+  expect(resumed.runId).toBe(result.runId); expect(resumed.stopReason).toBe("step_limit");
+  expect(tools.run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
 });

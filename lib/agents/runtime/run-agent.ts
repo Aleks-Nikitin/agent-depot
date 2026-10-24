@@ -32,7 +32,20 @@ export async function runAgent(options: {
   return continueRun(run.id, options.ownerId, deps);
 }
 
-async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies): Promise<AgentRunResult> {
+export async function resumeAgent(options: { approvalId: string; ownerId: string; approved: boolean }, deps: RuntimeDependencies) {
+  const claim = await deps.store.claimApproval(options.approvalId, options.ownerId, options.approved);
+  return resumeClaimedRun(claim, options.ownerId, options.approved, deps);
+}
+
+export async function resumeClaimedRun(claim: Awaited<ReturnType<RunStore["claimApproval"]>>, ownerId: string, approved: boolean, deps: RuntimeDependencies) {
+  await deps.onEvent?.(claim.event);
+  return continueRun(claim.approval.runId, ownerId, deps, {
+    call: { toolCallId: claim.approval.toolCallId, toolId: claim.approval.toolId, input: claim.approval.input }, approved,
+  });
+}
+
+async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies,
+  decision?: { call: PendingCall; approved: boolean }): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
@@ -53,6 +66,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
   };
   try {
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
+    if (decision) guard(JSON.stringify(state.pending[0]) === JSON.stringify(decision.call), "approval_call_mismatch");
     while (true) {
       signal.throwIfAborted();
       elapsed(); guard(state.activeMs < config.limits.timeoutMs, "deadline");
@@ -64,22 +78,35 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         const selected = permittedTool(config, deps.registry, call.toolId);
         selected.inputSchema.parse(call.input);
         guard(state.toolCalls < config.limits.maxToolCalls, "tool_limit");
+        let writeApproved = false;
         if (selected.kind === "write") {
-          if (state.approvalMode === "deny") {
+          if (state.approvalMode === "deny" || decision?.approved === false) {
             state.toolCalls++;
             await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
             addResult(state, call, { denied: true, reason: "write_denied" });
-            state.pending.shift(); await save(); continue;
+            state.pending.shift(); decision = undefined; await save(); continue;
           }
-          // Durable interactive approval is added by the following milestone.
-          throw new PolicyBlock("write_not_available");
+          if (!decision) {
+            elapsed();
+            const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
+            await deps.onEvent?.(pause.event);
+            return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
+          }
+          writeApproved = true;
+          decision = undefined;
         }
         state.toolCalls++;
         await save();
         await emit({ type: "tool_started", payload: call });
         const started = Date.now();
-        const output = await dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input,
-          context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } });
+        let output: unknown;
+        try {
+          output = await dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
+            context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } });
+        } catch (error) {
+          await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason: "tool_execution_failed" } });
+          throw error;
+        }
         addResult(state, call, output); state.pending.shift(); await save();
         await emit({ type: "tool_finished", payload: { toolCallId: call.toolCallId, toolId: call.toolId, output, durationMs: Date.now() - started } });
       }
