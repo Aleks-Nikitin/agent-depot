@@ -9,7 +9,7 @@ const db = getDb();
 const store = new PrismaRunStore(db);
 const created: string[] = [];
 const state: Checkpoint = { schemaVersion: 1, messages: [], pending: [], seenCallIds: [], modelCalls: 1, toolCalls: 0,
-  usage: { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0.001 }, startedAt: Date.now(), activeMs: 1, approvalMode: "human" };
+  usage: { inputTokens: 10, outputTokens: 10, estimatedCostUsd: 0.001 }, startedAt: Date.now(), activeMs: 1, approvalMode: "human", driverKey: "test" };
 afterAll(async () => {
   await db.agentRun.deleteMany({ where: { id: { in: created } } });
   await db.$disconnect();

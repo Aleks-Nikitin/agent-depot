@@ -14,5 +14,6 @@ export const CheckpointSchema = z.object({
   modelCalls: z.number().int().nonnegative(), toolCalls: z.number().int().nonnegative(),
   usage: UsageSchema, startedAt: z.number(), activeMs: z.number().nonnegative(),
   approvalMode: z.enum(["human", "deny"]),
+  driverKey: z.string().default("test"),
 });
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
