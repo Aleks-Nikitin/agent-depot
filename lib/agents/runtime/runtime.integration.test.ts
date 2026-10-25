@@ -241,3 +241,34 @@ it("records a failure before writes if an approval-resolution subscriber fails",
   expect(result.stopReason).toBe("event_delivery_failed"); expect(initial.tools.run).not.toHaveBeenCalled();
   expect((await store.history(result.runId, "demo")).status).toBe("failed");
 });
+
+it("never carries an approval decision to another call when tool classification changes", async () => {
+  for (const approved of [true, false]) {
+    const firstRun = vi.fn(async () => ({ ok: true }));
+    const secondRun = vi.fn(async () => ({ ok: true }));
+    const makeTools = (firstKind: "read" | "write") => createRegistry([
+      { id: "create_ticket", description: "first", kind: firstKind, inputSchema: z.object({ query: z.string() }), run: firstRun },
+      { id: "second_write", description: "second", kind: "write", inputSchema: z.object({ query: z.string() }), run: secondRun },
+    ]);
+    const config = { ...supportAgent, enabledTools: ["create_ticket", "second_write"] };
+    const model = driver([request(
+      { toolId: "create_ticket", toolCallId: "reclassified-first", input: { query: "first" } },
+      { toolId: "second_write", toolCallId: "unapproved-second", input: { query: "second" } },
+    ), answer()]);
+    const events: RunStep[] = [];
+    const initial = await runAgent({ config, ownerId: "demo", message: "test" }, {
+      store, driver: model, registry: makeTools("write"), onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+    });
+    expect(initial.status).toBe("waiting_approval");
+    const approval = events.at(-1)!;
+    if (approval.type !== "approval_required") throw new Error("expected first approval");
+    const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved }, {
+      store, driver: model, registry: makeTools("read"),
+    });
+    expect(resumed.status).toBe("waiting_approval");
+    expect(firstRun).toHaveBeenCalledTimes(approved ? 1 : 0);
+    expect(secondRun).not.toHaveBeenCalled();
+    const history = await store.history(initial.runId, "demo");
+    expect(history.events.at(-1)?.type).toBe("approval_required");
+  }
+});

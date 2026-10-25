@@ -92,24 +92,27 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         signal.throwIfAborted();
         const call = state.pending[0];
         const selected = permittedTool(config, deps.registry, call.toolId);
-        selected.inputSchema.parse(call.input);
         guard(state.toolCalls < config.limits.maxToolCalls, "tool_limit");
+        // The saved decision applies to this call only, even if its trusted
+        // registry classification changed while the run was paused.
+        const callDecision = decision;
+        decision = undefined;
+        if (callDecision?.approved === false || (selected.kind === "write" && state.approvalMode === "deny")) {
+          state.toolCalls++;
+          await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
+          addResult(state, call, { denied: true, reason: "write_denied" });
+          state.pending.shift(); await save(); continue;
+        }
+        selected.inputSchema.parse(call.input);
         let writeApproved = false;
         if (selected.kind === "write") {
-          if (state.approvalMode === "deny" || decision?.approved === false) {
-            state.toolCalls++;
-            await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
-            addResult(state, call, { denied: true, reason: "write_denied" });
-            state.pending.shift(); decision = undefined; await save(); continue;
-          }
-          if (!decision) {
+          if (!callDecision) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
             await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
-          decision = undefined;
         }
         state.toolCalls++;
         await save();
