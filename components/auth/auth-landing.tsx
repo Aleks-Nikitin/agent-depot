@@ -14,6 +14,18 @@ const steps = [
   ["03", "Stay in control", "Approve writes + inspect history", "Every step leaves a trace"],
 ] as const;
 
+const features = [
+  ["Draft with Gemini", "Describe a goal in plain language; Gemini proposes instructions, tools, and tests."],
+  ["Human-in-the-loop", "Sensitive writes pause for approval. Nothing risky runs without a person saying yes."],
+  ["Versioned configs", "Every save is a new version. Roll back instantly and publish only what passed its checks."],
+  ["Full observability", "Every run leaves a trace: model steps, tool calls, cost, and outcome — all inspectable."],
+] as const;
+
+const templates = [
+  ["Support template", "Answers grounded in your policies", "Knowledge search, manager-review approvals, and three saved checks."],
+  ["Pricing template", "Turn sales figures into decisions", "Prepared sales data, competitor lookup, and three saved checks."],
+] as const;
+
 export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -38,7 +50,7 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
   }
 
   return (
-    <div className="ad min-h-screen">
+    <div className="ad min-h-screen w-full overflow-x-hidden">
       <div className="ad-bloom" aria-hidden="true" />
       <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:py-16">
         <section className="relative isolate overflow-hidden rounded-3xl border border-(--ad-border) bg-[radial-gradient(ellipse_at_85%_25%,#f4efe3_0%,#ece9e0_45%,#e3dccb_78%)] px-6 py-12 sm:px-10 lg:py-16">
@@ -89,6 +101,57 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* What you can do */}
+        <section className="mt-10" aria-label="Capabilities">
+          <p className="ad-mono text-[11px] uppercase tracking-[0.2em] text-(--ad-muted)">
+            What you can do
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map(([title, body]) => (
+              <div key={title} className="rounded-xl border border-(--ad-border) bg-(--ad-surface) p-5">
+                <h3 className="text-sm font-semibold text-(--ad-text)">{title}</h3>
+                <p className="mt-2 text-xs leading-6 text-(--ad-muted)">{body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Starter templates */}
+        <section className="mt-10" aria-label="Starter templates">
+          <p className="ad-mono text-[11px] uppercase tracking-[0.2em] text-(--ad-muted)">
+            Start from a template
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {templates.map(([tag, title, body]) => (
+              <button
+                key={tag}
+                onClick={() => setOpen(true)}
+                className="rounded-xl border border-(--ad-border) p-5 text-left transition-colors hover:bg-(--ad-raised)"
+              >
+                <p className="ad-mono text-[10px] uppercase tracking-widest text-(--ad-model)">{tag}</p>
+                <h3 className="mt-2 font-semibold text-(--ad-text)">{title}</h3>
+                <p className="mt-2 text-sm text-(--ad-muted)">{body} Sign in to start →</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Bottom CTA */}
+        <section className="mt-10 mb-4 rounded-2xl border border-(--ad-border) bg-(--ad-surface) px-6 py-8 text-center">
+          <h2 className="text-xl font-semibold text-(--ad-text)">Build your first agent in minutes.</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-(--ad-muted)">
+            Create a free workspace, or try everything instantly as a guest.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <Button variant="primary" onClick={() => setOpen(true)}>
+              Sign in / Sign up
+            </Button>
+            <Button variant="secondary" onClick={continueAsGuest} disabled={guestPending}>
+              {guestPending ? "Starting…" : "Continue as guest →"}
+            </Button>
           </div>
         </section>
       </main>
