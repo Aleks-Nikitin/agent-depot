@@ -22,15 +22,31 @@ enum ApprovalStatus {
 }
 
 model Agent {
-  id        String   @id @default(uuid())
-  ownerId   String
-  name      String
-  version   Int      @default(1)
-  config    Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String         @id @default(uuid())
+  ownerId          String
+  name             String
+  version          Int            @default(1)
+  config           Json
+  published        Boolean        @default(false)
+  publishedVersion Int?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  versions         AgentVersion[]
 
   @@index([ownerId])
+}
+
+model AgentVersion {
+  id        String   @id @default(uuid())
+  agentId   String
+  version   Int
+  name      String
+  config    Json
+  createdAt DateTime @default(now())
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([agentId])
 }
 
 model AgentRun {
