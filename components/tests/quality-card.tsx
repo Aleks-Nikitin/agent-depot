@@ -1,7 +1,5 @@
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
-import { SparkIcon } from "@/components/ui/icons";
 import type { QualitySummary } from "@/lib/evals/types";
 import { UNKNOWN } from "@/lib/runs/format";
 
@@ -23,8 +21,8 @@ export function QualityCard({ version, passRate, quality }: { version: number; p
         </div>
         <div className="rounded-lg border border-(--ad-border) bg-(--ad-raised) p-4">
           <p className="ad-mono text-[11px] tracking-wider text-(--ad-muted) uppercase">Tool errors</p>
-          <p className={cn("ad-mono mt-2 text-2xl font-semibold", quality.toolErrors > 0 && "text-(--ad-error)")}>{quality.toolErrors}</p>
-          <p className="mt-1 text-[13px] text-(--ad-muted)">{quality.toolErrors ? "during test runs" : "stable executions"}</p>
+          <p className={cn("ad-mono mt-2 text-2xl font-semibold", quality.toolErrors > 0 && "text-(--ad-error)")}>{passRate === null ? UNKNOWN : quality.toolErrors}</p>
+          <p className="mt-1 text-[13px] text-(--ad-muted)">{passRate === null ? "Run tests to measure" : "recorded tool failures, including denied writes"}</p>
         </div>
       </div>
       {quality.mostCommonFailure && (
@@ -33,8 +31,7 @@ export function QualityCard({ version, passRate, quality }: { version: number; p
           <p className="mt-2 flex items-center gap-2 text-sm"><span className="h-1.5 w-1.5 rounded-full bg-(--ad-error)" aria-hidden="true" />{quality.mostCommonFailure}</p>
         </div>
       )}
-      {/* PLACEHOLDER(P13): needs a server-side Gemini call reusing the runtime's model adapter. */}
-      <Button className="mt-4 w-full justify-center" disabled title="Not connected yet"><SparkIcon /> Summarize issues with Gemini</Button>
+      <p className="mt-4 text-xs text-(--ad-muted)">Passing these saved checks is release evidence; it does not certify enterprise readiness.</p>
     </Card>
   );
 }

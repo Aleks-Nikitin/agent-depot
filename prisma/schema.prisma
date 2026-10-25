@@ -92,6 +92,7 @@ model Agent {
   config           Json
   published        Boolean        @default(false)
   publishedVersion Int?
+  testRevision     Int            @default(0)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   versions         AgentVersion[]
@@ -232,6 +233,7 @@ model TestCase {
   mustNotCall String[]
   mustContain String[]
   useGrader   Boolean  @default(false)
+  expectedBehavior String?
   source      String   @default("user") // "gemini" | "template" | "user"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -249,6 +251,9 @@ model TestRun {
   passed       Boolean
   passedCount  Int
   totalCount   Int
+  testsFingerprint String?
+  status       String   @default("completed")
+  finishedAt   DateTime?
   createdAt    DateTime @default(now())
 
   @@index([agentId, agentVersion, createdAt])

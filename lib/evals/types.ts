@@ -8,6 +8,7 @@ export type TestCase = {
   mustContain: string[];
   /** Ask Gemini whether the answer followed policy. */
   useGrader: boolean;
+  expectedBehavior?: string;
   source: TestSource;
 };
 

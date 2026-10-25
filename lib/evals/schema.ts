@@ -19,6 +19,7 @@ export const TestCaseInputSchema = z.object({
   mustNotCall: z.array(ToolIdSchema).max(10).default([]),
   mustContain: z.array(z.string().trim().min(1, "Phrases can't be empty").max(200, "Keep phrases under 200 characters")).max(20).default([]),
   useGrader: z.boolean().default(false),
+  expectedBehavior: z.string().trim().min(1).max(2000).optional(),
   source: TestSourceSchema.default("user"),
 }).strict().superRefine((value, ctx) => {
   for (const tool of value.mustCall) {

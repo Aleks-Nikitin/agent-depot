@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { rollbackAgent } from "@/app/agents/_components/api";
+import { rollbackAgent, evaluateSavedAgent } from "@/app/agents/_components/api";
 
 export function VersionsPanel({ agentId, currentVersion, versions }: { agentId: string; currentVersion: number;
   versions: { version: number; name: string; createdAt: string; published: boolean; spec: string }[] }) {
@@ -11,7 +11,10 @@ export function VersionsPanel({ agentId, currentVersion, versions }: { agentId: 
   const [message, setMessage] = useState<string | null>(null);
   async function restore(version: number) {
     setBusy(version); setMessage(null);
-    try { const restored = await rollbackAgent(agentId, version); setMessage(`Restored v${version} as v${restored.version}. Run tests before publishing.`); router.refresh(); }
+    try { const restored = await rollbackAgent(agentId, version); setMessage(`Restored v${version} as v${restored.version}. Checking saved tests…`);
+      try { await evaluateSavedAgent(agentId); setMessage(`Restored as v${restored.version}. Review the latest results in Tests before publishing.`); }
+      catch { setMessage(`Restored as v${restored.version}. Open Tests to retry evaluation.`); }
+      router.refresh(); }
     catch { setMessage("Could not restore this version. Try again."); } finally { setBusy(null); }
   }
   return <section className="space-y-5 p-6">

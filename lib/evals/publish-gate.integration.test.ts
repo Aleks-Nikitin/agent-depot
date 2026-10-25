@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
 import { getDb } from "../db/prisma";
 import { supportAgent } from "../agents/fixtures";
+import { testFingerprint } from "./fingerprint";
 import { getPublishStatus, latestTestRun } from "./publish-gate";
 
 // Runs against the local Postgres (npm run test:integration). Uses its own agent and removes everything afterwards.
@@ -12,7 +13,7 @@ let minutes = 0;
 const at = () => new Date(Date.UTC(2026, 9, 25, 12, minutes++)); // strictly increasing createdAt
 
 async function run(agentVersion: number, passedCount: number, totalCount = 5) {
-  return db.testRun.create({ data: { agentId, agentVersion, results: [], passed: passedCount === totalCount, passedCount, totalCount, createdAt: at() } });
+  return db.testRun.create({ data: { agentId, agentVersion, results: [], testsFingerprint: testFingerprint(await db.testCase.findMany({ where: { agentId } })), passed: passedCount === totalCount, passedCount, totalCount, createdAt: at() } });
 }
 
 beforeEach(async () => {
