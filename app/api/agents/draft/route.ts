@@ -4,7 +4,7 @@ import { demoRegistry } from "@/lib/integrations/demo-tools";
 
 export async function POST(request: Request) {
   try {
-    authorize(request);
+    await authorize(request);
     const { goal } = await readBody(request, DraftRequestSchema);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(30_000)]);
     const result = await draftAgent(goal, demoRegistry, googleDraftGenerator, signal);

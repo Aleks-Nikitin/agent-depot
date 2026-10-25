@@ -1,3 +1,4 @@
+import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { MetricCards } from "@/components/runs/metric-cards";
@@ -12,6 +13,7 @@ import { listRuns } from "@/lib/runs/queries";
 export const metadata: Metadata = { title: "Runs · AgentDepot" };
 
 async function RunsContent() {
+  if (!await pageOwnerOrNull()) return null;
   const { runs, now } = await listRuns();
   return (
     <>

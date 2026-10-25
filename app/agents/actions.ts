@@ -3,6 +3,7 @@
 import { draftAgent, googleDraftGenerator } from "@/lib/agents/runtime/draft";
 import { demoRegistry } from "@/lib/integrations/demo-tools";
 import type { AgentDraft } from "@/lib/agents/contracts";
+import { pageOwner } from "@/lib/auth/session";
 
 export type DraftResult =
   | { ok: true; draft: AgentDraft }
@@ -11,6 +12,7 @@ export type DraftResult =
 // Runs server-side so the Gemini key never reaches the browser. Fills the
 // builder form from a plain-language goal.
 export async function draftAgentAction(goal: string): Promise<DraftResult> {
+  await pageOwner();
   const trimmed = goal.trim();
   if (!trimmed) return { ok: false, error: "Describe what the agent should do." };
   try {

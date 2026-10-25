@@ -5,7 +5,7 @@ import { resumeClaimedRun } from "@/lib/agents/runtime/run-agent";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const ownerId = authorize(request);
+    const ownerId = await authorize(request);
     const { approved } = await readBody(request, ApprovalRequestSchema);
     const { id } = await context.params;
     if (request.signal.aborted) throw new HttpError(408, "request_aborted");

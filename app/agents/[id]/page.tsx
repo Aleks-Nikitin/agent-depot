@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AgentBuilder from "../_components/AgentBuilder";
 import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
-import { currentOwner } from "@/lib/agents/library/http";
+import { pageOwnerOrNull } from "@/lib/auth/session";
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { getAgent } from "@/lib/agents/library/store";
 
 // Loads an owner-scoped agent from the database per request; never prerendered.
@@ -14,15 +15,17 @@ export default async function EditAgentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return <AuthPrompt />;
   let agent;
   try {
-    agent = await getAgent(currentOwner(), id);
+    agent = await getAgent(ownerId, id);
   } catch {
     notFound();
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <nav className="mb-4 text-sm text-zinc-400">
         <Link href="/" className="hover:text-white">
           Agents

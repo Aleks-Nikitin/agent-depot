@@ -5,9 +5,10 @@ import { usePathname } from "next/navigation";
 import { Backlit } from "@/components/ui/backlit";
 import { cn } from "@/components/ui/cn";
 import { DEFAULT_AGENT_ID } from "@/lib/fixtures/runs";
+import { AccountMenu } from "@/components/auth/account-menu";
 
 // PLACEHOLDER(P1): Dev 1 owns the root layout nav. This is the designed nav, mounted on Dev 3 screens.
-export function TopNav({ workspace = "AcmeStore" }: { workspace?: string }) {
+export function TopNav({ workspace = "Personal workspace" }: { workspace?: string }) {
   const pathname = usePathname();
   // Playground / Tests follow the agent you are looking at, else the default demo agent.
   const agentId = pathname.match(/^\/agents\/([^/]+)/)?.[1] ?? DEFAULT_AGENT_ID;
@@ -39,6 +40,7 @@ export function TopNav({ workspace = "AcmeStore" }: { workspace?: string }) {
           <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
           {workspace}
         </span>
+        <AccountMenu />
       </nav>
     </header>
   );

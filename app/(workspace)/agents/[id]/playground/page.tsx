@@ -1,3 +1,4 @@
+import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { PlaygroundScreen } from "@/components/playground/chat-panel";
@@ -6,6 +7,7 @@ import { getFixtureAgent } from "@/lib/fixtures/runs";
 export const metadata: Metadata = { title: "Playground · AgentDepot" };
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
+  if (!await pageOwnerOrNull()) return null;
   const { id } = await params;
   return <PlaygroundScreen agent={getFixtureAgent(decodeURIComponent(id))} />;
 }

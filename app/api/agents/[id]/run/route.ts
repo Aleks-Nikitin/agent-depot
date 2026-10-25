@@ -5,7 +5,7 @@ import { runAgent } from "@/lib/agents/runtime/run-agent";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const ownerId = authorize(request);
+    const ownerId = await authorize(request);
     const { message } = await readBody(request, RunRequestSchema);
     const { id } = await context.params;
     const config = await loadAgent(id, ownerId);

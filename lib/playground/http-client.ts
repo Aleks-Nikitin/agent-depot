@@ -2,11 +2,11 @@ import type { RunStep } from "@/lib/agents/contracts";
 import { outcomeOf, RunClientError, RunHistorySchema, type RunClient } from "./client";
 import { readRunStream } from "./ndjson";
 
-// PLACEHOLDER(P3): the runtime routes need a server-only bearer token, so the browser cannot call them
-// directly. These same-origin proxy routes do not exist yet; agree the paths with Dev 2, then build them.
+// Session cookies authorize these same-origin runtime routes; no browser bearer token or proxy.
+// The history endpoint still belongs to the monitoring backend integration.
 export const playgroundEndpoints = {
-  run: (agentId: string) => `/api/playground/agents/${encodeURIComponent(agentId)}/run`,
-  approval: (approvalId: string) => `/api/playground/approvals/${encodeURIComponent(approvalId)}`,
+  run: (agentId: string) => `/api/agents/${encodeURIComponent(agentId)}/run`,
+  approval: (approvalId: string) => `/api/approvals/${encodeURIComponent(approvalId)}`,
   history: (runId: string, afterSequence = 0) => `/api/runs/${encodeURIComponent(runId)}?after=${afterSequence}`,
 };
 
