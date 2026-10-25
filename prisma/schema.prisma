@@ -32,6 +32,7 @@ model Agent {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   versions         AgentVersion[]
+  testCases        TestCase[]     // NEW
 
   @@index([ownerId])
 }
@@ -60,14 +61,41 @@ model AgentRun {
   checkpoint     Json?
   response       String?
   stopReason     String?
+  source         String     @default("playground") // NEW: "playground" | "test"
+  agentVersion   Int?                              // NEW: agent version this run used
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   finishedAt     DateTime?
   events         RunEvent[]
   approvals      Approval[]
+  metrics        RuntimeMetric[]
 
   @@index([ownerId, createdAt])
   @@index([agentId, createdAt])
+  @@index([agentId, source, createdAt]) // NEW
+}
+
+// Composite key includes the partition timestamp for optional TimescaleDB use.
+model RuntimeMetric {
+  runId            String
+  finishedAt       DateTime @db.Timestamptz(3)
+  ownerId          String
+  agentId          String
+  agentVersion     Int
+  modelProfile     String
+  status           RunStatus
+  stopReason       String?
+  activeMs         Int
+  modelCalls       Int
+  toolCalls        Int
+  inputTokens      Float?
+  outputTokens     Float?
+  estimatedCostUsd Float?
+  run              AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@id([runId, finishedAt])
+  @@index([ownerId, finishedAt])
+  @@index([ownerId, agentId, finishedAt])
 }
 
 model RunEvent {
@@ -103,4 +131,35 @@ model DemoTicket {
   idempotencyKey String   @unique
   subject        String
   createdAt      DateTime @default(now())
+}
+
+// NEW
+model TestCase {
+  id          String   @id @default(uuid())
+  agentId     String
+  input       String
+  mustCall    String[]
+  mustNotCall String[]
+  mustContain String[]
+  useGrader   Boolean  @default(false)
+  source      String   @default("user") // "gemini" | "template" | "user"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  agent       Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+}
+
+// NEW
+model TestRun {
+  id           String   @id @default(uuid())
+  agentId      String
+  agentVersion Int
+  results      Json     // TestResult[]
+  passed       Boolean
+  passedCount  Int
+  totalCount   Int
+  createdAt    DateTime @default(now())
+
+  @@index([agentId, agentVersion, createdAt])
 }

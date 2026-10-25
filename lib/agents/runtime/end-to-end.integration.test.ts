@@ -5,6 +5,7 @@ import { getDb } from "../../db/prisma";
 import { supportAgent, salesAgent } from "../fixtures";
 import { RunStepSchema, type AgentConfig, type RunStep } from "../contracts";
 import { PrismaRunStore } from "../storage/prisma-store";
+import { createAgent, updateAgent, rollbackAgent } from "../library/store";
 import { POST as execute } from "../../../app/api/agents/[id]/run/route";
 import { POST as decide } from "../../../app/api/approvals/[id]/route";
 
@@ -19,6 +20,7 @@ beforeEach(() => {
   vi.stubEnv("RUNTIME_OUTPUT_USD_PER_MILLION", "2");
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals(); vi.unstubAllEnvs();
   for (const runId of runIds.splice(0)) {
     await db.demoTicket.deleteMany({ where: { idempotencyKey: { startsWith: `${runId}:` } } });
@@ -32,10 +34,10 @@ async function agent(config: AgentConfig) {
   await db.agent.create({ data: { id: copy.id, ownerId: copy.ownerId, name: copy.name, version: copy.version, config: copy } });
   return copy;
 }
-function request(body: unknown) {
+function request(body: unknown, signal?: AbortSignal) {
   return new Request("http://localhost/api/test", { method: "POST", headers: {
     authorization: "Bearer end-to-end-test-token-not-a-secret", "content-type": "application/json",
-  }, body: JSON.stringify(body) });
+  }, body: JSON.stringify(body), signal });
 }
 function providerScript(parts: unknown[][]) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -93,4 +95,64 @@ it("pauses a real demo write and resumes through the approval HTTP handler exact
   expect(new Set([...events, ...resumed].map(e => e.runId))).toEqual(new Set([runId]));
   expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(1);
   expect((await decide(request({ approved: true }), context)).status).toBe(409);
+});
+it("settles a claimed approval when the client disconnects during the claim", async () => {
+  const saved = await agent(supportAgent);
+  providerScript([[{ functionCall: { name: "create_ticket", args: { subject: "Disconnected approval" } } }]]);
+  const events = await readEvents(await execute(request({ message: "create ticket" }), { params: Promise.resolve({ id: saved.id }) }));
+  const waiting = events.at(-1)!;
+  if (waiting.type !== "approval_required") throw new Error("expected approval wait");
+  const runId = events[0].runId;
+  const controller = new AbortController();
+  const original = PrismaRunStore.prototype.claimApproval;
+  vi.spyOn(PrismaRunStore.prototype, "claimApproval").mockImplementationOnce(async function (this: PrismaRunStore, ...args) {
+    const claim = await original.apply(this, args);
+    controller.abort();
+    return claim;
+  });
+  const context = { params: Promise.resolve({ id: waiting.payload.approvalId }) };
+  const response = await decide(request({ approved: true }, controller.signal), context);
+  // Draining waits for cancellation cleanup even though the disconnected client
+  // cannot receive an approval-resolution notification.
+  await response.text().catch(() => {});
+  const history = await new PrismaRunStore(db).history(runId, "demo");
+  expect(history.status).toBe("failed");
+  expect(history.stopReason).toBe("interrupted_or_timeout");
+  expect(history.events.at(-1)?.type).toBe("run_failed");
+  expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(0);
+  expect(fetch).toHaveBeenCalledOnce();
+  expect((await decide(request({ approved: true }), context)).status).toBe(409);
+});
+it("runs builder-created versions and resumes the original snapshot across edits and rollback", async () => {
+  const original = await createAgent("demo", {
+    name: "Version integration", instructions: supportAgent.instructions, enabledTools: supportAgent.enabledTools,
+  });
+  agentIds.push(original.id);
+  providerScript([
+    [{ functionCall: { name: "create_ticket", args: { subject: "Versioned ticket" } } }],
+    [{ text: "Original snapshot ticket created." }],
+    [{ functionCall: { name: "knowledge_search", args: { query: "returns" } } }],
+    [{ text: "Policy from rolled-back configuration." }],
+  ]);
+  const context = { params: Promise.resolve({ id: original.id }) };
+  const waiting = await readEvents(await execute(request({ message: "create a ticket" }), context));
+  const approval = waiting.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval pause");
+  const updated = await updateAgent("demo", original.id, {
+    name: "Edited version", instructions: salesAgent.instructions, enabledTools: salesAgent.enabledTools,
+  });
+  expect(updated.version).toBe(2);
+  const resumed = await readEvents(await decide(request({ approved: true }), { params: Promise.resolve({ id: approval.payload.approvalId }) }));
+  expect(resumed.at(-1)?.type).toBe("run_completed");
+  const oldRun = await new PrismaRunStore(db).loadRun(waiting[0].runId, "demo");
+  expect(oldRun.config.version).toBe(1);
+  expect(oldRun.config.enabledTools).toEqual(supportAgent.enabledTools);
+  const restored = await rollbackAgent("demo", original.id, 1);
+  expect(restored.version).toBe(3);
+  expect(restored.config.enabledTools).toEqual(supportAgent.enabledTools);
+  expect(restored.versions).toHaveLength(3);
+  const next = await readEvents(await execute(request({ message: "check return policy" }), context));
+  expect(next.at(-1)?.type).toBe("run_completed");
+  const newRun = await new PrismaRunStore(db).loadRun(next[0].runId, "demo");
+  expect(newRun.config.version).toBe(3);
 });

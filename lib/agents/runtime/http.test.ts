@@ -28,3 +28,53 @@ it("delivers events before task completion and closes as NDJSON", async () => {
   expect(JSON.parse(new TextDecoder().decode((await reader.read()).value)).type).toBe("run_completed");
   expect((await reader.read()).done).toBe(true);
 });
+
+it("bounds incomplete request bodies with a deadline and cancels their source", async () => {
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(writer) { writer.enqueue(new TextEncoder().encode('{"message":')); }, cancel,
+  });
+  const request = new Request("http://local", { method: "POST", body, duplex: "half" } as RequestInit);
+  await expect(readBody(request, RunRequestSchema, 20)).rejects.toMatchObject({ status: 408, message: "body_timeout" });
+  expect(cancel).toHaveBeenCalledOnce();
+});
+it("aborts body reads on disconnect instead of waiting for the body timeout", async () => {
+  const controller = new AbortController(); const cancel = vi.fn();
+  const request = new Request("http://local", {
+    method: "POST", body: new ReadableStream<Uint8Array>({ cancel }), signal: controller.signal, duplex: "half",
+  } as RequestInit);
+  const reading = readBody(request, RunRequestSchema);
+  controller.abort();
+  await expect(reading).rejects.toMatchObject({ status: 408, message: "request_aborted" });
+  expect(cancel).toHaveBeenCalledOnce();
+});
+it("returns the size error even if the request source never acknowledges cancellation", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    start(writer) { writer.enqueue(new Uint8Array(17_000)); }, cancel() { return new Promise(() => {}); },
+  });
+  await expect(readBody(new Request("http://local", { method: "POST", body, duplex: "half" } as RequestInit), RunRequestSchema))
+    .rejects.toMatchObject({ status: 413, message: "body_too_large" });
+});
+it("does not start execution for an already disconnected request", async () => {
+  const controller = new AbortController(); controller.abort();
+  const task = vi.fn(async () => {});
+  const response = streamRun(new Request("http://local", { signal: controller.signal }), task);
+  await expect(response.text()).rejects.toThrow("run_stream_failed");
+  expect(task).not.toHaveBeenCalled();
+});
+it("hands cancellation to an already-started run so it can settle durable state", async () => {
+  const controller = new AbortController(); controller.abort();
+  const task = vi.fn(async (signal: AbortSignal) => { expect(signal.aborted).toBe(true); });
+  const response = streamRun(new Request("http://local", { signal: controller.signal }), task, { alreadyStarted: true });
+  await response.text();
+  expect(task).toHaveBeenCalledOnce();
+});
+it("propagates response-reader cancellation to the active runtime", async () => {
+  let activeSignal!: AbortSignal;
+  const response = streamRun(new Request("http://local"), async (signal, emit) => {
+    activeSignal = signal; emit(eventFixtures.success[0]);
+    await new Promise<void>(resolve => signal.addEventListener("abort", () => resolve(), { once: true }));
+  });
+  const reader = response.body!.getReader(); await reader.read(); await reader.cancel();
+  expect(activeSignal.aborted).toBe(true);
+});

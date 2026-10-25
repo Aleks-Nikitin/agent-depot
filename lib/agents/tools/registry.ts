@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDeepStrictEqual } from "node:util";
 import type { AgentConfig } from "../contracts";
 
 export type ToolContext = {
@@ -42,6 +43,7 @@ export async function dispatchTool(options: {
   const tool = permittedTool(config, registry, toolId);
   const parsed = tool.inputSchema.parse(input);
   if (tool.kind === "write" && !options.writeApproved) throw new Error("approval_required");
+  if (tool.kind === "write" && !isDeepStrictEqual(parsed, input)) throw new Error("approval_input_changed");
   const result = await tool.run(parsed, context);
   context.signal.throwIfAborted();
   const json = JSON.stringify(result);

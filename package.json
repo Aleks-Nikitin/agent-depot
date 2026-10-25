@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "db:up": "docker compose up -d --wait",
     "db:status": "docker compose ps",
     "db:down": "docker compose down",
@@ -16,12 +16,18 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:check": "tsx scripts/check-db.ts",
+    "db:diagnose": "tsx scripts/diagnose-db.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
     "runtime:smoke": "tsx scripts/check-runtime.ts",
     "deploy:vultr": "bash scripts/deploy-vultr.sh"
+    "metrics:setup": "tsx scripts/setup-runtime-metrics.ts",
+    "metrics:check": "tsx scripts/check-runtime-metrics.ts",
+    "metrics:test:up": "docker compose -f compose.timescale-test.yaml up -d --wait",
+    "metrics:test:down": "docker compose -f compose.timescale-test.yaml down",
+    "test:timescale": "tsx scripts/test-timescale.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.105",

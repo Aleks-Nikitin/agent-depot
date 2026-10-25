@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { isDeepStrictEqual } from "node:util";
 import { AgentConfigSchema, RunRequestSchema, type AgentConfig, type AgentRunResult, type EventInput, type RunStep } from "../contracts";
 import type { RunStore } from "../storage/prisma-store";
 import { dispatchTool, enabledTools, permittedTool, type ToolRegistry } from "../tools/registry";
@@ -11,6 +12,7 @@ export type RuntimeDependencies = {
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
 class PolicyBlock extends Error {}
+class EventDeliveryError extends Error {}
 function guard(condition: boolean, reason: string): asserts condition {
   if (!condition) throw new PolicyBlock(reason);
 }
@@ -29,8 +31,7 @@ export async function runAgent(options: {
     modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
-  await deps.onEvent?.(await deps.store.appendEvent(run.id, options.ownerId, { type: "run_started", payload: { agentId: config.id } }));
-  return continueRun(run.id, options.ownerId, deps);
+  return continueRun(run.id, options.ownerId, deps, undefined, "run_started");
 }
 
 export async function resumeAgent(options: { approvalId: string; ownerId: string; approved: boolean }, deps: RuntimeDependencies) {
@@ -39,14 +40,13 @@ export async function resumeAgent(options: { approvalId: string; ownerId: string
 }
 
 export async function resumeClaimedRun(claim: Awaited<ReturnType<RunStore["claimApproval"]>>, ownerId: string, approved: boolean, deps: RuntimeDependencies) {
-  await deps.onEvent?.(claim.event);
   return continueRun(claim.approval.runId, ownerId, deps, {
     call: { toolCallId: claim.approval.toolCallId, toolId: claim.approval.toolId, input: claim.approval.input }, approved,
-  });
+  }, claim.event);
 }
 
 async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies,
-  decision?: { call: PendingCall; approved: boolean }): Promise<AgentRunResult> {
+  decision?: { call: PendingCall; approved: boolean }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
@@ -57,17 +57,39 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     ? AbortSignal.any([deps.signal, AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs))])
     : AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs));
   const elapsed = () => { state.activeMs = previousActive + Date.now() - invocationStarted; };
-  const emit = async (event: EventInput) => deps.onEvent?.(await deps.store.appendEvent(runId, ownerId, event));
+  let deliveryFailed = false;
+  const deliver = async (event: RunStep) => {
+    if (deliveryFailed) return;
+    const callback = deps.onEvent;
+    if (!callback) return;
+    try { await withCancellation(signal, async () => callback(event)); }
+    catch (error) {
+      deliveryFailed = true;
+      if (signal.aborted) throw error;
+      throw new EventDeliveryError("event_delivery_failed");
+    }
+  };
+  // Once a pause/terminal state is durable, notification failure must not try to
+  // finalize that run a second time or consume a pending approval.
+  const deliverSettled = async (event: RunStep) => {
+    try { await deliver(event); } catch { /* Stored state/event can be replayed. */ }
+  };
+  const emit = async (event: EventInput) => {
+    const saved = await deps.store.appendEvent(runId, ownerId, event);
+    await deliver(saved);
+  };
   const save = async () => { elapsed(); version = await deps.store.saveCheckpoint(runId, ownerId, version, state); };
   const finish = async (status: "completed" | "blocked" | "failed", response: string | null, reason: string | null): Promise<AgentRunResult> => {
     elapsed();
     const event = await deps.store.finishRun(runId, ownerId, version, state, status, response, reason);
-    await deps.onEvent?.(event);
+    await deliverSettled(event);
     return { runId, status, response, stopReason: reason, usage: state.usage };
   };
   try {
+    if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
+    else if (openingEvent) await deliver(openingEvent);
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
-    if (decision) guard(JSON.stringify(state.pending[0]) === JSON.stringify(decision.call), "approval_call_mismatch");
+    if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     while (true) {
       signal.throwIfAborted();
       elapsed(); guard(state.activeMs < config.limits.timeoutMs, "deadline");
@@ -77,24 +99,31 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         signal.throwIfAborted();
         const call = state.pending[0];
         const selected = permittedTool(config, deps.registry, call.toolId);
-        selected.inputSchema.parse(call.input);
         guard(state.toolCalls < config.limits.maxToolCalls, "tool_limit");
+        // The saved decision applies to this call only, even if its trusted
+        // registry classification changed while the run was paused.
+        const callDecision = decision;
+        decision = undefined;
+        if (callDecision?.approved === false || (selected.kind === "write" && state.approvalMode === "deny")) {
+          state.toolCalls++;
+          await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
+          addResult(state, call, { denied: true, reason: "write_denied" });
+          state.pending.shift(); await save(); continue;
+        }
+        const normalizedInput = selected.inputSchema.parse(call.input);
+        if (callDecision?.approved) guard(isDeepStrictEqual(normalizedInput, callDecision.call.input), "approval_input_changed");
+        // Display and checkpoint the executable arguments, including schema
+        // defaults, before asking a person to approve the operation.
+        call.input = normalizedInput;
         let writeApproved = false;
         if (selected.kind === "write") {
-          if (state.approvalMode === "deny" || decision?.approved === false) {
-            state.toolCalls++;
-            await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
-            addResult(state, call, { denied: true, reason: "write_denied" });
-            state.pending.shift(); decision = undefined; await save(); continue;
-          }
-          if (!decision) {
+          if (!callDecision) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
-            await deps.onEvent?.(pause.event);
+            await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
-          decision = undefined;
         }
         state.toolCalls++;
         await save();
@@ -145,6 +174,8 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       guard(state.usage.estimatedCostUsd <= config.limits.maxEstimatedCostUsd, "budget_limit");
       guard(turn.outputTokens! <= config.limits.maxOutputTokens, "output_limit");
       guard(turn.finishReason !== "length", "output_limit");
+      guard(turn.finishReason !== "content-filter", "model_content_filtered");
+      guard(turn.finishReason === undefined || turn.finishReason === "stop" || turn.finishReason === "tool-calls", "model_incomplete");
       if (turn.calls.length) {
         guard(turn.calls.length <= config.limits.maxToolCalls - state.toolCalls, "tool_limit");
         for (const call of turn.calls) {
@@ -160,6 +191,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       }
     }
   } catch (error) {
+    if (error instanceof EventDeliveryError) return finish("failed", null, "event_delivery_failed");
     if (error instanceof PolicyBlock) return finish("blocked", null, error.message);
     if (signal.aborted) return finish("failed", null, "interrupted_or_timeout");
     // Provider/tool exception text may contain credentials or sensitive response bodies.

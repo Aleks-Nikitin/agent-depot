@@ -31,6 +31,22 @@ function driver(turns: ModelTurn[]): ModelDriver {
       const next = turns.shift(); if (!next) throw new Error("no_scripted_turn"); return next;
     }) };
 }
+it("blocks filtered and unsuccessful model turns before tools or final answers are accepted", async () => {
+  for (const finishReason of ["content-filter", "error", "other", "interrupted"]) {
+    for (const turn of [answer("Partial provider answer"), request({ toolId: "knowledge_search", toolCallId: "filtered", input: { query: "test" } })]) {
+      const model = driver([{ ...turn, finishReason }]);
+      const { result, events, tools } = await execute(supportAgent, model);
+      expect(result.status).toBe("blocked");
+      expect(result.stopReason).toBe(finishReason === "content-filter" ? "model_content_filtered" : "model_incomplete");
+      expect(result.response).toBeNull();
+      expect(result.usage.inputTokens).toBe(10);
+      expect(result.usage.outputTokens).toBe(5);
+      expect(tools.run).not.toHaveBeenCalled();
+      expect(events.some(event => event.type === "tool_requested")).toBe(false);
+      expect(model.turn).toHaveBeenCalledOnce();
+    }
+  }
+});
 function registry() {
   const run = vi.fn(async () => ({ text: "fixture data" }));
   return { run, tools: createRegistry(["knowledge_search", "sales_lookup", "create_ticket"].map(id => ({
@@ -163,4 +179,158 @@ it("requires a fresh approval for each distinct write in the same model turn", a
   expect(second.payload.approvalId).not.toBe(first.payload.approvalId);
   const finished = await resumeAgent({ approvalId: second.payload.approvalId, ownerId: "demo", approved: false }, deps);
   expect(finished.status).toBe("completed"); expect(initial.tools.run).toHaveBeenCalledOnce();
+});
+
+it("persists a complete read-tool trace without a live event listener", async () => {
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: tools.tools, driver: driver([
+      request({ toolId: "knowledge_search", toolCallId: "no-listener", input: { query: "test" } }), answer(),
+    ]),
+  });
+  created.push(result.runId);
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.map(e => e.type)).toEqual([
+    "run_started", "model_started", "model_finished", "tool_requested", "tool_started", "tool_finished",
+    "model_started", "model_finished", "run_completed",
+  ]);
+});
+it("persists denied write events for evaluation runs without a live listener", async () => {
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test", approvalMode: "deny" }, {
+    store, registry: tools.tools, driver: driver([
+      request({ toolId: "create_ticket", toolCallId: "eval-denied", input: { query: "test" } }), answer(),
+    ]),
+  });
+  created.push(result.runId);
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.some(e => e.type === "tool_failed" && e.payload.reason === "write_denied")).toBe(true);
+  expect(tools.run).not.toHaveBeenCalled();
+});
+
+it("fails a newly started run durably if its live subscriber throws", async () => {
+  const model = driver([answer()]);
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: model,
+    onEvent(event) { created.push(event.runId); throw new Error("subscriber private details"); },
+  });
+  expect(result.status).toBe("failed"); expect(result.stopReason).toBe("event_delivery_failed");
+  expect(model.turn).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.map(e => e.type)).toEqual(["run_started", "run_failed"]);
+  expect(JSON.stringify(history)).not.toContain("subscriber private details");
+});
+it("preserves a durable completion when only final-event delivery fails", async () => {
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: driver([answer()]),
+    onEvent(event) { if (event.type === "run_started") created.push(event.runId); if (event.type === "run_completed") throw new Error("closed subscriber"); },
+  });
+  expect(result.status).toBe("completed");
+  const history = await store.history(result.runId, "demo");
+  expect(history.status).toBe("completed");
+  expect(history.events.filter(e => ["run_completed", "run_failed"].includes(e.type))).toHaveLength(1);
+});
+it("preserves a pending approval when pause notification fails and permits later resume", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "delivery-pause", input: { query: "test" } }), answer()]);
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, driver: model, registry: tools.tools,
+    onEvent(event) { if (event.type === "run_started") created.push(event.runId); if (event.type === "approval_required") throw new Error("closed subscriber"); },
+  });
+  expect(result.status).toBe("waiting_approval"); expect(tools.run).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  const approval = history.events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected durable approval");
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, driver: model, registry: tools.tools });
+  expect(resumed.status).toBe("completed"); expect(tools.run).toHaveBeenCalledOnce();
+  const completeHistory = await store.history(result.runId, "demo");
+  expect(completeHistory.events.some(e => e.type === "tool_finished")).toBe(true);
+});
+it("records a failure before writes if an approval-resolution subscriber fails", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "resume-delivery", input: { query: "test" } }), answer()]);
+  const initial = await execute(supportAgent, model);
+  const approval = initial.events.find(e => e.type === "approval_required");
+  if (!approval || approval.type !== "approval_required") throw new Error("expected approval");
+  const result = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, {
+    store, driver: model, registry: initial.tools.tools, onEvent() { throw new Error("closed subscriber"); },
+  });
+  expect(result.stopReason).toBe("event_delivery_failed"); expect(initial.tools.run).not.toHaveBeenCalled();
+  expect((await store.history(result.runId, "demo")).status).toBe("failed");
+});
+
+it("never carries an approval decision to another call when tool classification changes", async () => {
+  for (const approved of [true, false]) {
+    const firstRun = vi.fn(async () => ({ ok: true }));
+    const secondRun = vi.fn(async () => ({ ok: true }));
+    const makeTools = (firstKind: "read" | "write") => createRegistry([
+      { id: "create_ticket", description: "first", kind: firstKind, inputSchema: z.object({ query: z.string() }), run: firstRun },
+      { id: "second_write", description: "second", kind: "write", inputSchema: z.object({ query: z.string() }), run: secondRun },
+    ]);
+    const config = { ...supportAgent, enabledTools: ["create_ticket", "second_write"] };
+    const model = driver([request(
+      { toolId: "create_ticket", toolCallId: "reclassified-first", input: { query: "first" } },
+      { toolId: "second_write", toolCallId: "unapproved-second", input: { query: "second" } },
+    ), answer()]);
+    const events: RunStep[] = [];
+    const initial = await runAgent({ config, ownerId: "demo", message: "test" }, {
+      store, driver: model, registry: makeTools("write"), onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+    });
+    expect(initial.status).toBe("waiting_approval");
+    const approval = events.at(-1)!;
+    if (approval.type !== "approval_required") throw new Error("expected first approval");
+    const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved }, {
+      store, driver: model, registry: makeTools("read"),
+    });
+    expect(resumed.status).toBe("waiting_approval");
+    expect(firstRun).toHaveBeenCalledTimes(approved ? 1 : 0);
+    expect(secondRun).not.toHaveBeenCalled();
+    const history = await store.history(initial.runId, "demo");
+    expect(history.events.at(-1)?.type).toBe("approval_required");
+  }
+});
+
+it("shows and persists normalized write arguments before requesting approval", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const tools = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string().trim(), priority: z.string().default("normal") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "normalized", input: { query: "  original  " } }), answer()]);
+  const events: RunStep[] = [];
+  const initial = await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: tools, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  expect(approval.payload.input).toEqual({ query: "original", priority: "normal" });
+  expect((await store.loadRun(initial.runId, "demo")).state.pending[0].input).toEqual(approval.payload.input);
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: tools, driver: model });
+  expect(resumed.status).toBe("completed");
+  expect(run).toHaveBeenCalledWith(approval.payload.input, expect.anything());
+});
+it("blocks approved writes when a changed schema would inject different arguments", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const original = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write", inputSchema: z.object({ query: z.string() }), run }]);
+  const changed = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string(), priority: z.string().default("urgent") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "schema-drift", input: { query: "original" } }), answer()]);
+  const events: RunStep[] = [];
+  await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: original, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: changed, driver: model });
+  expect(resumed.status).toBe("blocked"); expect(resumed.stopReason).toBe("approval_input_changed");
+  expect(run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
+});
+
+it("enforces the run deadline even if an asynchronous event subscriber never settles", async () => {
+  const model = driver([answer()]);
+  const result = await runAgent({ config: { ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 300 } }, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: model,
+    onEvent(event) { created.push(event.runId); return new Promise<void>(() => {}); },
+  });
+  expect(result.status).toBe("failed"); expect(result.stopReason).toBe("interrupted_or_timeout");
+  expect(model.turn).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  expect(history.status).toBe("failed"); expect(history.events.at(-1)?.type).toBe("run_failed");
 });

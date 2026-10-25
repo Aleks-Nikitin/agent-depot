@@ -52,6 +52,15 @@ it("streams approval resolution using the server's stored claim", async () => {
   expect(mocks.claim).toHaveBeenCalledWith("support-demo", "demo", false);
   expect(mocks.resume).toHaveBeenCalledWith(claim, "demo", false, expect.anything());
 });
+it("leaves an approval unclaimed when disconnect happens before the claim", async () => {
+  const controller = new AbortController();
+  const incoming = new Request(request({ approved: true }), { signal: controller.signal });
+  const params = Promise.resolve().then(() => { controller.abort(); return { id: "support-demo" }; });
+  const response = await approve(incoming, { params });
+  expect(response.status).toBe(408);
+  expect(mocks.claim).not.toHaveBeenCalled();
+  expect(mocks.resume).not.toHaveBeenCalled();
+});
 it("validates draft requests and returns the editable draft without invoking a run", async () => {
   expect((await draft(request({ goal: "" }))).status).toBe(400);
   mocks.draft.mockResolvedValue({ draft: { name: "Support" }, usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0 } });
