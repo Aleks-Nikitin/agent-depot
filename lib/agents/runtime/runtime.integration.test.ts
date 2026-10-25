@@ -141,3 +141,26 @@ it("does not dispatch a model request when saving its checkpoint fails", async (
   });
   expect(result.status).toBe("failed"); expect(model.turn).not.toHaveBeenCalled();
 });
+
+it("does not report truncated model output as a completed answer", async () => {
+  const { result } = await execute(supportAgent, driver([{ ...answer("Incomplete answer"), finishReason: "length" }]));
+  expect(result.status).toBe("blocked"); expect(result.stopReason).toBe("output_limit"); expect(result.response).toBeNull();
+});
+it("requires a fresh approval for each distinct write in the same model turn", async () => {
+  const model = driver([request(
+    { toolId: "create_ticket", toolCallId: "first", input: { query: "first" } },
+    { toolId: "create_ticket", toolCallId: "second", input: { query: "second" } },
+  ), answer()]);
+  const initial = await execute(supportAgent, model);
+  const first = initial.events.find(e => e.type === "approval_required");
+  if (!first || first.type !== "approval_required") throw new Error("expected first approval");
+  const more: RunStep[] = [];
+  const deps = { store, driver: model, registry: initial.tools.tools, onEvent(e: RunStep) { more.push(e); } };
+  const pausedAgain = await resumeAgent({ approvalId: first.payload.approvalId, ownerId: "demo", approved: true }, deps);
+  expect(pausedAgain.status).toBe("waiting_approval"); expect(initial.tools.run).toHaveBeenCalledOnce();
+  const second = more.find(e => e.type === "approval_required");
+  if (!second || second.type !== "approval_required") throw new Error("expected second approval");
+  expect(second.payload.approvalId).not.toBe(first.payload.approvalId);
+  const finished = await resumeAgent({ approvalId: second.payload.approvalId, ownerId: "demo", approved: false }, deps);
+  expect(finished.status).toBe("completed"); expect(initial.tools.run).toHaveBeenCalledOnce();
+});
