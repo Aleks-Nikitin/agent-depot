@@ -11,18 +11,18 @@ export function AccountMenu() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
   if (isPending) return <span className="px-3 text-xs text-(--ad-muted)">Loading account…</span>;
-  if (!session) return <Link href="/auth" className="px-3 py-1.5 text-sm text-(--ad-model)">Sign in</Link>;
+  if (!session) return <Link href="/" className="px-3 py-1.5 text-sm text-(--ad-model)">Sign in</Link>;
   async function logout() {
     setPending(true); setError(false);
     try {
       const result = await signOut();
       if (result.error) { setError(true); setPending(false); }
-      else { router.replace("/auth"); router.refresh(); }
+      else { router.replace("/"); router.refresh(); }
     } catch { setError(true); setPending(false); }
   }
   return <div className="flex items-center gap-2 text-sm">
     <span className="hidden max-w-40 truncate text-(--ad-text) sm:inline">{session.user.isAnonymous ? "Guest workspace" : session.user.name}</span>
     <button type="button" onClick={logout} disabled={pending} className="rounded-md px-3 py-1.5 text-(--ad-text) hover:bg-(--ad-raised) disabled:opacity-50">{pending ? "Signing out…" : "Sign out"}</button>
-    {error && <span role="alert" className="text-xs text-red-300">Sign-out failed. Try again.</span>}
+    {error && <span role="alert" className="text-xs text-(--ad-error)">Sign-out failed. Try again.</span>}
   </div>;
 }
