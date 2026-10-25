@@ -1,35 +1,25 @@
-# Guarded automatic actions
+# Internal actions and tool availability
 
-Saved agents choose `requireWriteApproval`. New builder configurations default to automatic supported writes; old configurations default to approval. Owners can enable human review in the builder. The trusted registry decides which tools support automatic execution; other writes still pause. Execution requests cannot override this policy. Evaluations always deny writes.
+`create_ticket` creates a support request immediately in the workspace database. It does not need human approval, including for older agents with `requireWriteApproval: true`. Tickets appear in **Tools & knowledge**, and successful playground replies link there. A ticket is an internal record, not an external helpdesk request, refund, payment or message. Publishing is not required to run an agent or create tickets.
 
-`maxWriteCalls` defaults to 2 and is bounded at 5, alongside model/tool/time/cost limits. The builder exposes this limit and preserves it across authentication, saves, duplication and restore. `tool_started.authorization` records `read`, `human` or `policy`; the trace labels automatic actions.
+The per-run write cap still applies: `maxWriteCalls` defaults to 2, maximum 5. Ownership, input/output validation and persistent idempotency remain enforced. The same runtime call is not executed twice; a separate new run is a new request and may create a new ticket. Evaluations always deny writes. Generic review/resume infrastructure is retained for future tools, but no current tool requires a review prompt.
 
-## Support tickets
+## Removed messaging
 
-`create_ticket` stores a bounded support request in the workspace database. A persistent idempotency key prevents repeated execution of the same call, and its output has a strict schema. Tools & Knowledge lists recent tickets. This is an application record, not an external ticketing-system connection, refund or account change.
+Email never actually delivered messages, so it has been removed from the builder, templates, tool catalog and Gemini tool declarations. The runtime recognizes historical `send_email` IDs to explain removal; it cannot execute them or create new email records. Saving an old agent in the builder removes the retired ID. Old run history is preserved. Update old custom instructions and tests that explicitly request email delivery.
 
-## Record-only email
+Brevo, Slack and Discord integrations were canceled. No webhook, provider, notification migration or additional dependency is introduced. UI success/error messages provide internal feedback.
 
-`send_email` does not send mail. No external email provider, API credentials or delivery settings are required. Its output explicitly says `recorded only, not sent`.
+## Read tools
 
-Automatic mode accepts only this strict shape:
+- **Search workspace knowledge:** searches the caller's uploaded documents. With no uploads, it uses explicitly labeled sample policies; once private documents exist, it does not mix in samples. An empty match is a valid result, not proof of policy.
+- **Explore sample sales:** always uses an illustrative prepared dataset. It cannot read a user's actual store sales or invent figures for products outside that dataset.
+- **Compare competitor prices / Search recent news / Read a public webpage:** require `SERPAPI_API_KEY`. Without it, new selections are disabled with setup guidance; existing agents show playground warnings. Gemini is informed of missing capabilities rather than being given unusable tools. Search cache entries expire after five minutes; failed responses are not cached. Shopping results retain product links. Empty results are distinct from provider errors.
 
-```json
-{
-  "to": "customer@example.com",
-  "template": "support_acknowledgement",
-  "ticketId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
+## Failures and recovery
 
-The template is `support_acknowledgement` or `review_request`; the ticket must exist in the caller's workspace. The server renders factual fixed text referencing that ticket, with no refund/payment/account-change promises. The same ticket/template/recipient combination is deduplicated across calls and runs. Owner isolation still applies.
+New runs persist stable safe reasons for Gemini access, quota, model availability, bad requests, network problems and unusable responses. Tool setup, quota and service errors retain their distinct reasons. Chat, traces and saved runs translate these into explanations and next steps. Provider bodies, keys and raw exception messages are never copied into run events.
 
-Legacy freeform `subject`/`body` requires human review even when automatic mode is enabled. Subjects reject header injection, and automatic message content cannot be replaced with model prose. No HTML, sender override, CC/BCC or attachments are accepted. Output uses a strict schema. The approval panel previews the template's rendered text when review is required.
+A failure after creating a ticket does not undo that ticket. The chat shows completed ticket actions and links to their records so a user can check before retrying. There are no automatic billable model retries.
 
-## Verification and scope
-
-Runtime/database tests verify automatic tickets and email records, write caps, cross-owner knowledge isolation, sample-data provenance, human review for freeform messages and evaluation write denial. These tests send no external messages.
-
-The requested Brevo work was canceled before committing; its local-only migration metadata was removed while preserving existing records. Slack/Discord webhooks and GitHub issue creation were discussed as possible future connectors; none is implemented or implied by a local ticket.
-
-Jev was assessed using [TypeSafe's official documentation](https://docs.typesafe.ai/introduction/quickstart). Its Noul primitive returns a probability. Ownership checks, exact templates and limits remain deterministic code; Gemini remains the optional semantic evaluator. A future classifier could help prioritize or route tickets, but no new model provider is necessary for these permissions.
+The supplied run `8c45a590-17fb-4403-b657-c53c5fb6f4f6` stopped during its first model request, before any tool call. It only recorded `execution_failed`, so its original provider cause cannot be recovered from the export. A later request using that saved configuration reached Gemini successfully. This does not prove why the historical request failed. Local live search was also unconfigured during the audit, separately preventing a real whey-protein price comparison.

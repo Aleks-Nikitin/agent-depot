@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readFile, writeFile, stat } from "fs/promises";
 import path from "path";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache/serpapi");
@@ -11,7 +11,9 @@ function cacheKey(engine: string, params: Record<string, string>) {
 
 async function readCache(key: string) {
   try {
-    return JSON.parse(await readFile(path.join(CACHE_DIR, `${key}.json`), "utf8"));
+    const file = path.join(CACHE_DIR, `${key}.json`);
+    if (Date.now() - (await stat(file)).mtimeMs > 5 * 60_000) return null;
+    return JSON.parse(await readFile(file, "utf8"));
   } catch {
     return null;
   }
@@ -37,7 +39,7 @@ export async function serpapiSearch(
 
   const apiKey = process.env.SERPAPI_API_KEY;
   if (!apiKey) {
-    return { data: { error: "SERPAPI_API_KEY not set" }, cached: false, source: "error" };
+    return { data: { error: "search_not_configured" }, cached: false, source: "error" };
   }
 
   const url = new URL("https://serpapi.com/search.json");
@@ -47,13 +49,14 @@ export async function serpapiSearch(
 
   try {
     const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) });
-    if (!res.ok) throw new Error(`SerpApi ${res.status}`);
+    if (!res.ok) throw new Error(res.status === 429 ? "search_rate_limited" : [401, 403].includes(res.status) ? "search_access_denied" : "search_unavailable");
     const json = await res.json();
+    if (json && typeof json === "object" && "error" in json) return { data: { error: "search_unavailable" }, cached: false, source: "error" };
     await writeCache(key, json);
     return { data: json, cached: false, source: "serpapi" };
   } catch (e) {
     return {
-      data: { error: e instanceof Error ? e.message : "serpapi request failed" },
+      data: { error: e instanceof Error && ["search_rate_limited", "search_access_denied", "search_unavailable"].includes(e.message) ? e.message : "search_unavailable" },
       cached: false,
       source: "error",
     };

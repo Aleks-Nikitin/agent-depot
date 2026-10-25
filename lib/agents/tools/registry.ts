@@ -11,6 +11,9 @@ export type ToolDefinition = {
   inputSchema: z.ZodType;
   outputSchema?: z.ZodType;
   automaticWrites?: boolean;
+  approvalExempt?: boolean;
+  unavailable?: () => string | null;
+  retired?: boolean;
   canAutoWrite?: (input: unknown) => boolean;
   run(input: unknown, context: ToolContext): Promise<unknown>;
 };

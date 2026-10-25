@@ -1,3 +1,4 @@
+import { describeReason } from "@/lib/runs/format";
 import { generateText, tool, type ModelMessage, type LanguageModelUsage } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
@@ -41,8 +42,8 @@ export function createGoogleDriver(): ModelDriver {
     estimate: (input, output) => (input * rates.input + output * rates.output) / 1_000_000,
     async turn(config, messages, tools, signal) {
       const result = await generateText({
-        model: google(modelId), instructions: config.instructions, messages,
-        tools: Object.fromEntries(tools.map(t => [t.id, tool({ description: t.description, inputSchema: t.inputSchema })])),
+        model: google(modelId), instructions: config.instructions + "\nRuntime capabilities: unavailable tools cannot be executed. Explain missing setup in plain language; never claim an action succeeded without a successful tool result. " + tools.filter(t => t.retired || t.unavailable?.()).map(t => `${t.id}: ${t.retired ? "removed; external messaging is not supported. Create an internal ticket when requested instead" : describeReason(t.unavailable?.() ?? "tool_execution_failed")}`).join("; "), messages,
+        tools: Object.fromEntries(tools.filter(t => !t.retired && !t.unavailable?.()).map(t => [t.id, tool({ description: t.description, inputSchema: t.inputSchema })])),
         maxOutputTokens: config.limits.maxOutputTokens, maxRetries: 0, abortSignal: signal,
         // Minimal thinking for Gemini 3.1, disabled for supported 2.5 models.
         // The SDK's output usage includes both text and reasoning tokens.

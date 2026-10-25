@@ -19,7 +19,7 @@ import { MessageComposer } from "./message-composer";
 
 type Turn = { key: string; message: string; trace: Trace };
 
-const toolPhrase: Record<string, string> = { send_email: "record an email", create_ticket: "create a ticket" };
+const toolPhrase: Record<string, string> = { create_ticket: "create a ticket" };
 
 /** Position of the approval in the visible timeline, matching the step numbers in the trace. */
 function approvalStep(items: TraceItem[]): number {
@@ -38,10 +38,12 @@ function TurnReply({ trace, agentName, busy, error, interrupted, selected, onSel
   if (error) return <NoticeBubble kind="error" title="Could not run the agent">{describeReason(error)}</NoticeBubble>;
   if (interrupted) return <NoticeBubble kind="error" title="Connection ended">{describeReason("stream_ended")}. Check Runs for the saved result.</NoticeBubble>;
   const caption = <>Run {runLabel(trace.runId)} · {formatDuration(trace.totals.durationMs)} · {formatCost(trace.totals.costUsd)}</>;
+  const completedTickets = trace.items.filter(item => item.kind === "tool" && item.toolId === "create_ticket" && item.status === "succeeded");
+  const actionSummary = completedTickets.length ? <span className="mt-2 block">{completedTickets.length} support ticket(s) already created. <Link href="/tools" className="underline">View tickets</Link> before retrying to avoid creating duplicates.</span> : null;
   switch (trace.status) {
     case "completed":
     case "rejected":
-      return <AgentBubble name={agentName} caption={caption} onClick={onSelect} selected={selected}>{trace.response}</AgentBubble>;
+      return <AgentBubble name={agentName} caption={caption} onClick={onSelect} selected={selected}>{trace.response}{completedTickets.length > 0 && <p className="mt-3 text-sm"><Link href="/tools" className="underline">View created support tickets</Link></p>}</AgentBubble>;
     case "waiting_approval": {
       const a = trace.pendingApproval!;
       return (
@@ -51,9 +53,9 @@ function TurnReply({ trace, agentName, busy, error, interrupted, selected, onSel
       );
     }
     case "blocked":
-      return <NoticeBubble kind="blocked" title={`Stopped: ${describeReason(trace.stopReason ?? "blocked")}`}>No answer was produced. Raise the limit or narrow the request.</NoticeBubble>;
+      return <NoticeBubble kind="blocked" title={`Stopped: ${describeReason(trace.stopReason ?? "blocked")}`}>No answer was produced. Check the explanation above before changing the request.{actionSummary}</NoticeBubble>;
     case "failed":
-      return <NoticeBubble kind="error" title="Run failed">{describeReason(trace.stopReason ?? "execution_failed")}.</NoticeBubble>;
+      return <NoticeBubble kind="error" title="Couldn’t finish this request">{describeReason(trace.stopReason ?? "execution_failed")}.{actionSummary}</NoticeBubble>;
     default:
       return busy ? <TypingBubble name={agentName} /> : null;
   }
@@ -99,6 +101,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
           <Button size="sm" className="ad-mono ml-auto" onClick={newRun} disabled={run.busy}><RefreshIcon size={14} /> New run</Button>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+          {agent.toolWarnings?.map(warning => <div key={warning} role="note" className="rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-200">{warning}. <Link href={`/agents/${agent.id}`} className="underline">Review tools</Link></div>)}
           {!history.length && !current && (
             <p className="py-10 text-center text-sm text-(--ad-muted)">Ask {agent.name} something. Each message is one run, traced step by step.</p>
           )}

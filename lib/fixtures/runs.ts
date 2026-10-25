@@ -6,6 +6,7 @@ import { buildScenario, FIXTURE_EPOCH, type ScenarioKey } from "./scenarios";
 // the scenario events, so the table, metrics and run detail always agree with the trace.
 
 export type AgentHeaderData = {
+  toolWarnings?: string[];
   id: string;
   name: string;
   version: number;

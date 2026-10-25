@@ -10,16 +10,16 @@ export const DraftRequestSchema = z.object({ goal: z.string().trim().min(1).max(
 export type DraftGenerator = (goal: string, catalog: { id: string; description: string; kind: "read" | "write" }[], signal: AbortSignal) => Promise<{ draft: unknown; usage: Usage }>;
 export async function draftAgent(goal: string, registry: ToolRegistry, generate: DraftGenerator, signal: AbortSignal) {
   const request = DraftRequestSchema.parse({ goal });
-  const catalog = [...registry.values()].map(t => ({ id: t.id, description: t.description, kind: t.kind }));
+  const catalog = [...registry.values()].filter(t => !t.retired && !t.unavailable?.()).map(t => ({ id: t.id, description: t.description, kind: t.kind }));
   const generated = await withCancellation(signal, () => generate(request.goal, catalog, signal));
   signal.throwIfAborted();
   const parsed = DraftSchema.parse(generated.draft);
   const used = new Set<string>();
   const draft: AgentDraft = { ...parsed, tools: parsed.tools.map(selection => {
     const tool = registry.get(selection.id);
-    if (!tool || used.has(selection.id)) throw new Error("invalid_draft_tool");
+    if (!tool || tool.retired || tool.unavailable?.() || used.has(selection.id)) throw new Error("invalid_draft_tool");
     used.add(selection.id);
-    return { ...selection, requiresApproval: tool.kind === "write" };
+    return { ...selection, requiresApproval: tool.kind === "write" && !tool.approvalExempt };
   }) };
   return { draft, usage: generated.usage };
 }

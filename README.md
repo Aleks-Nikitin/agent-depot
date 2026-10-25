@@ -47,7 +47,7 @@ Do not delete the Compose volume unless you intend to erase local data. PostgreS
 - `AgentRun`: immutable configuration snapshot, status, version, private checkpoint, final answer.
 - `RunEvent`: durable ordered events; unique event ID and run/sequence pair for history and monitoring.
 - `Approval`: exact stored tool arguments, expiry, and one recorded decision.
-- `DemoTicket`: a local write with a unique idempotency key for approval demonstrations.
+- `DemoTicket`: an immediate internal support ticket with a unique idempotency key.
 
 Run snapshots retain history independently of agent deletion/edits. Checkpoints remain server-only. The runtime storage adapter implements atomic pause/claim/finish operations against this schema.
 
@@ -79,4 +79,6 @@ The builder, six integration tools, live playground/approvals, saved history, Ev
 
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. Restart the dev server after regenerating Prisma. If a previously malformed package file causes a stale build error, stop the server and clear/preserve its generated `.next` cache before restarting.
 
-See [Guarded actions](docs/guarded-actions.md) for supported automatic writes, record-only email templates and their limits. Saved agents can choose automatic supported writes or human approval; evaluations always deny writes.
+See [Guarded actions](docs/guarded-actions.md) for immediate support tickets, connected-tool requirements and actionable failure explanations. Email delivery and messaging integrations are not supported; evaluations always deny writes.
+
+For live competitor prices, news and webpage reading, set `SERPAPI_API_KEY` in the local `.env` and save it. Gemini still handles reasoning. Tools & knowledge shows connection setup; selecting a tool per agent controls its availability. Search results may include different package sizes and sellers, so compare equivalent units before treating a lower listed price as a better deal.
