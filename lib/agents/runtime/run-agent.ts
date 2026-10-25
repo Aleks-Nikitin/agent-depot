@@ -60,8 +60,14 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
   let deliveryFailed = false;
   const deliver = async (event: RunStep) => {
     if (deliveryFailed) return;
-    try { await deps.onEvent?.(event); }
-    catch { deliveryFailed = true; throw new EventDeliveryError("event_delivery_failed"); }
+    const callback = deps.onEvent;
+    if (!callback) return;
+    try { await withCancellation(signal, async () => callback(event)); }
+    catch (error) {
+      deliveryFailed = true;
+      if (signal.aborted) throw error;
+      throw new EventDeliveryError("event_delivery_failed");
+    }
   };
   // Once a pause/terminal state is durable, notification failure must not try to
   // finalize that run a second time or consume a pending approval.

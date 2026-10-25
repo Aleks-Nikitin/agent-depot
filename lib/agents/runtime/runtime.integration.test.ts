@@ -306,3 +306,15 @@ it("blocks approved writes when a changed schema would inject different argument
   expect(resumed.status).toBe("blocked"); expect(resumed.stopReason).toBe("approval_input_changed");
   expect(run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
 });
+
+it("enforces the run deadline even if an asynchronous event subscriber never settles", async () => {
+  const model = driver([answer()]);
+  const result = await runAgent({ config: { ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 300 } }, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: model,
+    onEvent(event) { created.push(event.runId); return new Promise<void>(() => {}); },
+  });
+  expect(result.status).toBe("failed"); expect(result.stopReason).toBe("interrupted_or_timeout");
+  expect(model.turn).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  expect(history.status).toBe("failed"); expect(history.events.at(-1)?.type).toBe("run_failed");
+});
