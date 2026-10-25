@@ -6,7 +6,6 @@ import { RunsTable } from "@/components/runs/runs-table";
 import { SuccessChart } from "@/components/runs/success-chart";
 import { ButtonLink } from "@/components/ui/button";
 import { PlayIcon } from "@/components/ui/icons";
-import { DEFAULT_AGENT_ID } from "@/lib/fixtures/runs";
 import { computeMetrics, successSeries } from "@/lib/runs/metrics";
 import { listRuns } from "@/lib/runs/queries";
 
@@ -15,14 +14,15 @@ export const metadata: Metadata = { title: "Runs · AgentDepot" };
 async function RunsContent() {
   const ownerId = await pageOwnerOrNull();
   if (!ownerId) return null;
-  const { runs, now } = await listRuns(ownerId);
+  const { runs, now, nextCursor } = await listRuns(ownerId);
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.7fr)]">
         <MetricCards metrics={computeMetrics(runs)} />
         <SuccessChart series={successSeries(runs)} className="flex flex-col p-5 sm:col-span-2 xl:col-span-1" />
       </div>
-      <RunsTable runs={runs} now={now} />
+      <p className="text-xs text-(--ad-muted)">Overview reflects the latest {runs.length} playground runs.</p>
+      <RunsTable runs={runs} now={now} nextCursor={nextCursor} />
     </>
   );
 }
@@ -35,7 +35,7 @@ export default function RunsPage() {
           <h1 className="text-[22px] font-semibold">Runs</h1>
           <p className="mt-1 text-sm text-(--ad-muted)">Every run, tagged by agent version</p>
         </div>
-        <ButtonLink href={`/agents/${DEFAULT_AGENT_ID}/playground`} variant="primary"><PlayIcon size={14} /> Trigger run</ButtonLink>
+        <ButtonLink href="/playground" variant="primary"><PlayIcon size={14} /> Trigger run</ButtonLink>
       </div>
       <Suspense fallback={<p className="text-sm text-(--ad-muted)">Loading runs…</p>}>
         <RunsContent />

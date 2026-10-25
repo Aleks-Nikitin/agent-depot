@@ -4,19 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Backlit } from "@/components/ui/backlit";
 import { cn } from "@/components/ui/cn";
-import { DEFAULT_AGENT_ID } from "@/lib/fixtures/runs";
 import { AccountMenu } from "@/components/auth/account-menu";
 
 // PLACEHOLDER(P1): Dev 1 owns the root layout nav. This is the designed nav, mounted on Dev 3 screens.
 export function TopNav({ workspace = "Personal workspace" }: { workspace?: string }) {
   const pathname = usePathname();
   // Playground / Tests follow the agent you are looking at, else the default demo agent.
-  const agentId = pathname.match(/^\/agents\/([^/]+)/)?.[1] ?? DEFAULT_AGENT_ID;
+  const candidate = pathname.match(/^\/agents\/([^/]+)/)?.[1];
+  const agentId = candidate !== "new" ? candidate : undefined;
   const links = [
     { href: "/", label: "Agents", active: pathname === "/" || (/^\/agents/.test(pathname) && !/\/(playground|tests)$/.test(pathname)) },
     { href: "/runs", label: "Runs", active: pathname.startsWith("/runs") },
-    { href: `/agents/${agentId}/playground`, label: "Playground", active: pathname.endsWith("/playground") },
-    { href: `/agents/${agentId}/tests`, label: "Tests", active: pathname.endsWith("/tests") },
+    { href: agentId ? `/agents/${agentId}/playground` : "/playground", label: "Playground", active: pathname.endsWith("/playground") },
+    { href: agentId ? `/agents/${agentId}/tests` : "/tests", label: "Tests", active: pathname.endsWith("/tests") },
+    { href: "/tools", label: "Tools & knowledge", active: pathname === "/tools" },
   ];
   return (
     <header className="border-b border-(--ad-border) bg-(--ad-surface)">

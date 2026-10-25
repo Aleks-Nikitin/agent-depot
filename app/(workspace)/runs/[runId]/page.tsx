@@ -54,6 +54,7 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
           </div>
           <div className="flex flex-wrap gap-3">
             <ButtonLink href={`/agents/${run.agentId}/playground`}><RefreshIcon size={14} /> Re-run</ButtonLink>
+            <ButtonLink href={`/agents/${run.agentId}/playground?runId=${encodeURIComponent(run.id)}`}>{run.status === "waiting_approval" ? "Review approval" : "Open saved run"}</ButtonLink>
             <ExportJsonButton run={run} />
           </div>
         </div>

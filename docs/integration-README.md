@@ -22,9 +22,9 @@ Restart an existing dev server after generating the client. Keep credentials in 
 ## Integration milestones
 
 - Backend foundation: implemented; deterministic and database regression checks accompany the code.
-- Live playground/history and missing Versions navigation: next.
+- Live playground/history and Versions navigation: implemented. The HTTP client now executes real saved agents and streams durable runtime events; saved-run URLs replay history and reopen approval pauses. Run detail links back to the saved playground. The history API supports incremental `after` sequence replay without checkpoints. Run lists have an explicit loaded-history scope and pagination. Global Playground/Tests links open owner-scoped agent pickers instead of nonexistent demo agents. A dedicated Versions tab displays saved YAML and restores a revision as a new version.
 - Real evaluation runner and authoritative publish gate: next; current simulated test execution must not be presented as real evaluation evidence.
-- Dashboard introduction, real summaries and Tools/Knowledge management: next.
+- Tools/Knowledge management: implemented. The new tab shows the actual registered tools, SerpApi configuration status, private persisted documents with add/delete, included sample policies and the workspace's recorded demo emails. Dashboard introduction and real activity summaries are next.
 - Final browser/live-provider verification and deployment checks: recorded when performed. Hosted Tiger remains blocked separately; no new hosted success is implied.
 
 The temporary root integration backbone is local-only and excluded from Git. This public document records shipped behavior and remaining work, not credentials or private development notes.
