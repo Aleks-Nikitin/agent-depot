@@ -53,6 +53,8 @@ Run snapshots retain history independently of agent deletion/edits. Checkpoints 
 
 Use `.env.example` as the template. Never expose database or model credentials through `NEXT_PUBLIC_*`. Runtime execution requires the credentials/model/pricing configuration in the linked Runtime README.
 
+`DATABASE_TARGET=local` (default) uses `DATABASE_URL`. Set `DATABASE_TARGET=tiger` to use the server-only `TIGER_DATABASE_URL` for both Prisma commands and the application. Keep both URLs in your ignored environment and restart after changing the target. Selecting another database does not migrate existing records between databases.
+
 ```bash
 npm run typecheck
 npm run lint
@@ -62,6 +64,8 @@ npm run build
 `npm test` runs deterministic contract, registry, transport, and drafting unit tests. `npm run test:integration` runs the PostgreSQL-backed store, runtime, approval and idempotency tests and deletes only test-created records. Database checks require the container to be healthy. Prisma schema/config follow the installed Prisma 7 conventions, including the PostgreSQL driver adapter.
 
 ## Runtime integration
+
+Optional Tiger Data time-series analytics use the same PostgreSQL/Prisma stack. See [runtime metrics setup and query contracts](docs/runtime-metrics.md) for the default PostgreSQL path, TimescaleDB setup and isolated tests.
 
 See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
 

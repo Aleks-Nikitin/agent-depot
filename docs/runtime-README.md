@@ -2,6 +2,8 @@
 
 Implementation documentation for the agent runtime engine: execution flow, tool registration, persistence, approvals, streaming APIs, configuration, design decisions, and verification.
 
+See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitoring query contracts and sponsor integration ownership.
+
 ## Overview
 
 One backend engine runs saved agents with different instructions and tools. It loads owner-scoped configuration, exposes only permitted tools, validates arguments, executes bounded model/tool rounds, streams durable events, pauses writes for human approval, and resumes with the same state. Evaluations reuse the engine with writes automatically denied. An additional endpoint generates editable agent drafts with tool reasons, assumptions and suggested tests.
@@ -33,6 +35,8 @@ Prisma is an ORM/client and migration CLI; PostgreSQL is the database server run
 All settings are server-side; never prefix them with `NEXT_PUBLIC_`.
 
 - `DATABASE_URL`: PostgreSQL connection string, matching the Compose port and password.
+- `DATABASE_TARGET`: `local` by default, or `tiger` to select `TIGER_DATABASE_URL` consistently for the app and Prisma CLI. Keep the local URL available and restart when switching. No implicit fallback or cross-database copying occurs.
+- `TIGER_DATABASE_URL`: optional server-only Tiger Cloud connection. Set it locally/deployed; never commit or log it.
 - `GOOGLE_GENERATIVE_AI_API_KEY`: real Google API key, stored only in the local/deployment environment.
 - `RUNTIME_API_TOKEN`: random secret of at least 24 characters. Empty/short values disable endpoints. This initial adapter authorizes one workspace (`demo`); it is not a multi-user login implementation.
 - `RUNTIME_MODEL_ID`: exact provider model ID. The selected default is `gemini-3.1-flash-lite`. The adapter also retains profiles for `gemini-2.5-flash` and `gemini-2.5-flash-lite`; availability is a provider/account prerequisite, not established by mocked tests.
@@ -116,6 +120,8 @@ curl http://localhost:3000/api/agents/draft \
 ## Persistence, approvals and evaluations
 
 `PrismaRunStore` persists AgentRun, RunEvent, Approval and checkpoint state. Its important operations are create/load, appendEvent, versioned saveCheckpoint, atomic pauseForApproval, atomic claimApproval and atomic finishRun. Checkpoints carry conversation messages, pending calls, completed IDs/results, usage, counters, model fingerprint, approval mode and active time. Configuration snapshots preserve historical behavior even if the original agent is edited/deleted.
+
+`finishRun` also inserts one `RuntimeMetric` row in the same transaction as the terminal state/event. It records owner/agent/version/model profile, outcome/reason, finish time, active duration, model/tool counts and nullable token/cost totals. Metrics contain no prompts, answers, tool arguments/results or checkpoint. Running/approval-waiting runs do not count as finished metrics; historical runs finalized before the metrics migration are not backfilled. Deleting a run cascades to its metric. Unknown usage remains null rather than being reported as zero. The composite run/time primary key supports optional TimescaleDB time partitioning; optimistic run finalization prevents duplicate metrics for a run.
 
 PostgreSQL allocates event sequences under row updates; unique run/sequence pairs preserve ordering. Optimistic checkpoint versions reject stale updates. Approval claims update pending/unexpired records and claim the waiting run in one transaction; simultaneous decisions cannot both resume it. Approval expires after 15 minutes. A stored call cannot be replaced through client-supplied arguments/history.
 

@@ -65,9 +65,17 @@ export class PrismaRunStore {
   async finishRun(runId: string, ownerId: string, version: number, state: Checkpoint,
     status: "completed" | "blocked" | "failed", response: string | null, stopReason: string | null) {
     return this.db.$transaction(async tx => {
+      const finishedAt = new Date();
       const result = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
-        data: { status, response, stopReason, checkpoint: json(state), finishedAt: new Date(), version: { increment: 1 } } });
+        data: { status, response, stopReason, checkpoint: json(state), finishedAt, version: { increment: 1 } } });
       if (result.count !== 1) throw new Error("stale_checkpoint");
+      const run = await tx.agentRun.findUniqueOrThrow({ where: { id: runId } });
+      const config = AgentConfigSchema.parse(run.configSnapshot);
+      await tx.runtimeMetric.create({ data: {
+        runId, finishedAt, ownerId, agentId: config.id, agentVersion: config.version,
+        modelProfile: state.driverKey, status, stopReason, activeMs: Math.ceil(state.activeMs),
+        modelCalls: state.modelCalls, toolCalls: state.toolCalls, ...state.usage,
+      } });
       return insertEvent(tx, runId, ownerId, status === "completed"
         ? { type: "run_completed", payload: { response: response!, durationMs: state.activeMs, usage: state.usage } }
         : { type: status === "blocked" ? "run_blocked" : "run_failed", payload: { reason: stopReason! } });

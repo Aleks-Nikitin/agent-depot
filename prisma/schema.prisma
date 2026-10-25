@@ -65,9 +65,33 @@ model AgentRun {
   finishedAt     DateTime?
   events         RunEvent[]
   approvals      Approval[]
+  metrics        RuntimeMetric[]
 
   @@index([ownerId, createdAt])
   @@index([agentId, createdAt])
+}
+
+// Composite key includes the partition timestamp for optional TimescaleDB use.
+model RuntimeMetric {
+  runId            String
+  finishedAt       DateTime @db.Timestamptz(3)
+  ownerId          String
+  agentId          String
+  agentVersion     Int
+  modelProfile     String
+  status           RunStatus
+  stopReason       String?
+  activeMs         Int
+  modelCalls       Int
+  toolCalls        Int
+  inputTokens      Float?
+  outputTokens     Float?
+  estimatedCostUsd Float?
+  run              AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@id([runId, finishedAt])
+  @@index([ownerId, finishedAt])
+  @@index([ownerId, agentId, finishedAt])
 }
 
 model RunEvent {

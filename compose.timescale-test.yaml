@@ -1,0 +1,19 @@
+name: agent-depot-timescale-test
+services:
+  timescale:
+    image: timescale/timescaledb:latest-pg16@sha256:322ae364eca3321cf2a48f1ef31213b87843413b3cf8feeebf54e999a26bb731
+    environment:
+      POSTGRES_USER: agent_depot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: agent_depot_metrics_test
+    ports:
+      - "127.0.0.1:${TIMESCALE_TEST_PORT:-55434}:5432"
+    volumes:
+      - metrics_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_depot -d agent_depot_metrics_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+volumes:
+  metrics_test_data:
