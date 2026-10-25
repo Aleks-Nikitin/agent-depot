@@ -95,31 +95,32 @@ export default function Dashboard() {
     metrics.total === 0 ? 0 : Math.round((metrics.published / metrics.total) * 100);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-8">
       {/* Page header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold text-text">Agents</h1>
-          <p className="mt-0.5 text-[12px] text-muted">
+          <p className="label-mono mb-2">{"// Workspace"}</p>
+          <h1 className="font-serif text-[44px] leading-none">Agents.</h1>
+          <p className="mt-3 text-[16px] italic text-muted">
             Configure, version, and publish reusable AI agents.
           </p>
         </div>
         <Link
           href="/agents/new"
-          className="flex h-[34px] items-center gap-1.5 rounded-[6px] bg-primary px-3 text-[12px] font-medium text-primary-text hover:brightness-95"
+          className="mono rounded-full bg-ink px-5 py-3 text-[12px] font-medium tracking-[0.12em] text-paper hover:bg-ink/90"
         >
-          <span className="text-[13px] leading-none">＋</span> New agent
+          [ NEW AGENT → ]
         </Link>
       </div>
 
       {error && (
-        <div className="rounded-[6px] border border-pending/30 bg-pending/10 px-3 py-2 text-[12px] text-pending">
+        <div className="rounded-[10px] border border-accent/40 bg-accent/10 px-4 py-2.5 text-[13px] text-accent">
           {error}
         </div>
       )}
 
       {/* Metrics row */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Metric label="Total Agents" value={metrics.total} hint="in this workspace" />
         <Metric
           label="Published"
@@ -131,68 +132,63 @@ export default function Dashboard() {
           label="Drafts"
           value={metrics.drafts}
           hint="not yet published"
-          tone="pending"
+          tone="accent"
         />
         <Metric label="Tools In Use" value={metrics.tools} hint="distinct connectors" />
+      </div>
 
-        {/* Mini status panel */}
-        <div className="rounded-[6px] border border-border bg-panel p-3">
-          <div className="flex items-center justify-between">
-            <span className="label-mono">Published Ratio</span>
-            <span className="rounded-full bg-success/15 px-1.5 py-0.5 font-mono text-[10px] text-success">
-              {publishedPct}%
-            </span>
-          </div>
-          <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface">
-            <div
-              className="h-full rounded-full bg-success"
-              style={{ width: `${publishedPct}%` }}
-            />
-          </div>
-          <p className="mt-2 font-mono text-[11px] text-muted">
-            {metrics.published}/{metrics.total} published
-          </p>
+      {/* Published ratio bar */}
+      <div className="rounded-[10px] border border-line bg-panel px-5 py-4">
+        <div className="flex items-center justify-between">
+          <span className="label-mono">Published Ratio</span>
+          <span className="mono text-[12px] text-success">{publishedPct}%</span>
         </div>
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-raised">
+          <div
+            className="h-full rounded-full bg-success"
+            style={{ width: `${publishedPct}%` }}
+          />
+        </div>
+        <p className="mono mt-2 text-[12px] text-muted">
+          {metrics.published}/{metrics.total} published
+        </p>
       </div>
 
       {/* Filter toolbar */}
-      <div className="flex flex-wrap items-center gap-2 rounded-[6px] border border-border bg-panel p-2">
-        <div className="flex h-[32px] flex-1 items-center gap-2 rounded-[6px] border border-border bg-surface px-2.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex h-[44px] flex-1 items-center gap-2 rounded-full border border-line bg-panel px-4">
           <span className="text-muted">⌕</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search agents…"
-            className="w-full bg-transparent text-[12px] text-text outline-none"
+            placeholder="search agents…"
+            className="w-full bg-transparent text-[14px] text-ink outline-none"
           />
         </div>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          className="h-[32px] rounded-[6px] border border-border bg-surface px-2 text-[12px] text-text outline-none"
+          className="mono h-[44px] rounded-full border border-line bg-panel px-4 text-[12px] text-ink outline-none"
         >
-          <option value="all">All status</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
+          <option value="all">ALL STATUS</option>
+          <option value="published">PUBLISHED</option>
+          <option value="draft">DRAFT</option>
         </select>
         <button
           onClick={exportJson}
-          className="h-[32px] rounded-[6px] border border-border bg-surface px-3 text-[12px] text-muted hover:text-text"
+          className="mono h-[44px] rounded-full border border-line bg-panel px-5 text-[12px] tracking-[0.1em] text-muted hover:text-ink"
         >
-          Export
+          EXPORT
         </button>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-[6px] border border-border">
+      <div className="overflow-x-auto rounded-[10px] border border-line bg-panel">
         <table className="w-full min-w-[760px] border-collapse">
           <thead>
-            <tr className="border-b border-border bg-panel">
+            <tr className="border-b border-line">
               {["Name", "ID", "Version", "Tools", "Status", "Updated", ""].map((h) => (
-                <th
-                  key={h}
-                  className="label-mono px-3 py-2 text-left font-normal"
-                >
+                <th key={h} className="label-mono px-5 py-3 text-left font-normal">
                   {h}
                 </th>
               ))}
@@ -201,14 +197,14 @@ export default function Dashboard() {
           <tbody>
             {agents === null && !error && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-[12px] text-muted">
+                <td colSpan={7} className="px-5 py-8 text-center italic text-muted">
                   Loading…
                 </td>
               </tr>
             )}
             {agents && filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center text-[12px] text-muted">
+                <td colSpan={7} className="px-5 py-12 text-center italic text-muted">
                   No agents match. Create one from a template or draft it with Gemini.
                 </td>
               </tr>
@@ -217,31 +213,31 @@ export default function Dashboard() {
               <tr
                 key={agent.id}
                 onClick={() => router.push(`/agents/${agent.id}`)}
-                className="h-[44px] cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface/50"
+                className="h-[54px] cursor-pointer border-b border-line/60 last:border-0 hover:bg-raised/50"
               >
-                <td className="px-3 text-[12px] text-text">{agent.name}</td>
-                <td className="px-3 font-mono text-[11px] text-muted">
+                <td className="px-5 text-[15px] text-ink">{agent.name}</td>
+                <td className="px-5 mono text-[12px] text-muted">
                   {agent.id.slice(0, 8)}
                 </td>
-                <td className="px-3">
-                  <span className="rounded-[4px] border border-border bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted">
+                <td className="px-5">
+                  <span className="mono rounded-[5px] border border-line bg-raised px-2 py-0.5 text-[11px] text-muted">
                     v{agent.version}
                   </span>
                 </td>
-                <td className="px-3 font-mono text-[11px] text-muted">
+                <td className="px-5 mono text-[12px] text-muted">
                   {agent.enabledTools.length}
                 </td>
-                <td className="px-3">
+                <td className="px-5">
                   <StatusPill
                     published={agent.published}
                     publishedVersion={agent.publishedVersion}
                   />
                 </td>
-                <td className="px-3 font-mono text-[11px] text-muted">
+                <td className="px-5 mono text-[12px] text-muted">
                   {new Date(agent.updatedAt).toLocaleDateString()}
                 </td>
-                <td className="px-3" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center justify-end gap-1.5">
+                <td className="px-5" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-2">
                     <RowButton onClick={() => onDuplicate(agent.id)} disabled={busy === agent.id}>
                       Duplicate
                     </RowButton>
@@ -273,17 +269,15 @@ function Metric({
   label: string;
   value: number;
   hint: string;
-  tone?: "success" | "pending";
+  tone?: "success" | "accent";
 }) {
   const color =
-    tone === "success" ? "text-success" : tone === "pending" ? "text-pending" : "text-text";
+    tone === "success" ? "text-success" : tone === "accent" ? "text-accent" : "text-ink";
   return (
-    <div className="rounded-[6px] border border-border bg-panel p-3">
+    <div className="rounded-[10px] border border-line bg-panel px-5 py-4">
       <span className="label-mono">{label}</span>
-      <div className={`mt-2 font-mono text-[26px] font-bold leading-none ${color}`}>
-        {value}
-      </div>
-      <p className="mt-2 text-[11px] text-muted">{hint}</p>
+      <div className={`mt-3 font-serif text-[40px] leading-none ${color}`}>{value}</div>
+      <p className="mt-3 text-[13px] italic text-muted">{hint}</p>
     </div>
   );
 }
@@ -297,15 +291,15 @@ function StatusPill({
 }) {
   if (published) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-success/12 px-2 py-0.5 font-mono text-[10px] text-success">
+      <span className="mono inline-flex items-center gap-1.5 rounded-full border border-success/40 bg-success/10 px-2.5 py-0.5 text-[11px] text-success">
         <span className="h-1 w-1 rounded-full bg-success" />
         published v{publishedVersion}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-pending/12 px-2 py-0.5 font-mono text-[10px] text-pending">
-      <span className="h-1 w-1 rounded-full bg-pending" />
+    <span className="mono inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] text-accent">
+      <span className="h-1 w-1 rounded-full bg-accent" />
       draft
     </span>
   );
@@ -326,8 +320,8 @@ function RowButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-[5px] border border-border bg-surface px-2 py-1 text-[11px] hover:border-muted disabled:opacity-40 ${
-        danger ? "text-pending" : "text-muted hover:text-text"
+      className={`mono rounded-full border border-line bg-paper px-3 py-1 text-[11px] hover:border-muted disabled:opacity-40 ${
+        danger ? "text-accent" : "text-muted hover:text-ink"
       }`}
     >
       {children}

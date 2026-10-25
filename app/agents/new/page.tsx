@@ -4,17 +4,19 @@ import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
 
 export default function NewAgentPage() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
-        <Link href="/" className="hover:text-text">
+    <div className="space-y-6">
+      <div className="mono flex items-center gap-2 text-[12px] text-muted">
+        <Link href="/" className="hover:text-ink">
           agents
         </Link>
         <span>/</span>
-        <span className="text-text">new</span>
+        <span className="text-ink">new</span>
       </div>
       <div>
-        <h1 className="text-[18px] font-semibold text-text">New agent</h1>
-        <p className="mt-0.5 text-[12px] text-muted">
+        <h1 className="font-serif text-[40px] leading-none">
+          New <span className="italic">agent.</span>
+        </h1>
+        <p className="mt-3 text-[16px] italic text-muted">
           Draft with Gemini, pick a template, or configure from scratch.
         </p>
       </div>

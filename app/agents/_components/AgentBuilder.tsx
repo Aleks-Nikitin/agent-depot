@@ -153,48 +153,45 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
   };
 
   const inputClass =
-    "w-full rounded-[6px] border border-border bg-surface px-2.5 py-2 text-[12px] text-text outline-none focus:border-muted";
+    "w-full rounded-[10px] border border-line bg-paper px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-muted";
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_300px]">
+    <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
       {/* Left working panel */}
-      <div className="rounded-[6px] border border-border bg-panel p-4">
+      <div className="rounded-[10px] border border-line bg-panel p-6">
         {/* Draft with Gemini */}
-        <section className="mb-4 rounded-[6px] border border-border bg-surface p-3">
-          <div className="flex items-center justify-between">
-            <span className="label-mono">Draft with Gemini</span>
+        <section className="mb-6">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="label-mono">{"// Draft with Gemini"}</span>
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
           </div>
-          <p className="mt-1 text-[11px] text-muted">
-            Describe what the agent should do; Gemini fills the form.
-          </p>
-          <div className="mt-2 flex gap-2">
+          <div className="flex items-stretch overflow-hidden rounded-full border border-line bg-paper">
             <input
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="e.g. Answer customer returns questions from policy docs"
-              className="flex-1 rounded-[6px] border border-border bg-panel px-2.5 py-2 text-[12px] text-text outline-none focus:border-muted"
+              placeholder="describe what the agent should do…"
+              className="flex-1 bg-transparent px-4 text-[14px] text-ink outline-none"
             />
             <button
               onClick={runDraft}
               disabled={drafting || goal.trim().length === 0}
-              className="rounded-[6px] bg-primary px-3 text-[12px] font-medium text-primary-text hover:brightness-95 disabled:opacity-40"
+              className="mono m-1 rounded-full bg-ink px-5 py-2.5 text-[11px] tracking-[0.12em] text-paper hover:bg-ink/90 disabled:opacity-40"
             >
-              {drafting ? "Drafting…" : "Draft"}
+              {drafting ? "DRAFTING…" : "[ DRAFT → ]"}
             </button>
           </div>
-          {draftError && <p className="mt-2 text-[11px] text-pending">{draftError}</p>}
+          {draftError && <p className="mt-2 text-[13px] italic text-accent">{draftError}</p>}
         </section>
 
         {/* Templates */}
-        <section className="mb-4">
-          <span className="label-mono">Start from a template</span>
+        <section className="mb-6">
+          <span className="label-mono">{"// Start from a template"}</span>
           <div className="mt-2 flex flex-wrap gap-2">
             {templates.map((t) => (
               <button
                 key={t.key}
                 onClick={() => applyTemplate(t)}
-                className="rounded-[6px] border border-border bg-surface px-2.5 py-1.5 text-[12px] text-muted hover:text-text"
+                className="mono rounded-full border border-line bg-paper px-4 py-1.5 text-[12px] text-muted hover:text-ink"
               >
                 {t.label}
               </button>
@@ -203,28 +200,26 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
         </section>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-1 border-b border-border text-[12px]">
+        <div className="mb-5 flex gap-5 border-b border-line">
           {(["form", "spec"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`-mb-px border-b-2 px-2.5 py-1.5 ${
-                tab === t
-                  ? "border-text/70 text-text"
-                  : "border-transparent text-muted hover:text-text"
+              className={`label-mono -mb-px border-b-2 pb-2.5 ${
+                tab === t ? "border-accent !text-ink" : "border-transparent hover:!text-ink"
               }`}
             >
-              {t === "form" ? "Configure" : "Spec (YAML)"}
+              {t === "form" ? "Configure" : "Spec · YAML"}
             </button>
           ))}
         </div>
 
         {tab === "form" ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {assumptions.length > 0 && (
-              <div className="rounded-[6px] border border-pending/30 bg-pending/10 p-3 text-[12px] text-pending">
-                <span className="label-mono text-pending">Gemini assumptions</span>
-                <ul className="mt-1 list-disc pl-4">
+              <div className="rounded-[10px] border border-accent/40 bg-accent/10 p-4">
+                <span className="label-mono !text-accent">Gemini assumptions</span>
+                <ul className="mt-1.5 list-disc pl-5 text-[14px] text-ink">
                   {assumptions.map((a, i) => (
                     <li key={i}>{a}</li>
                   ))}
@@ -237,7 +232,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={`mt-1 ${inputClass}`}
+                className={`mt-1.5 ${inputClass}`}
                 placeholder="Support Agent"
               />
             </div>
@@ -248,14 +243,14 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={6}
-                className={`mt-1 ${inputClass} resize-y`}
+                className={`mt-1.5 ${inputClass} resize-y`}
                 placeholder="Describe how the agent should behave…"
               />
             </div>
 
             <div>
               <label className="label-mono">Model</label>
-              <div className="mt-1 inline-flex rounded-[6px] border border-border bg-surface px-2.5 py-2 font-mono text-[11px] text-muted">
+              <div className="mono mt-1.5 inline-flex rounded-full border border-line bg-paper px-4 py-2 text-[12px] text-muted">
                 gemini-3.1-flash-lite
               </div>
             </div>
@@ -263,43 +258,38 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             <div>
               <div className="flex items-center justify-between">
                 <label className="label-mono">Tools</label>
-                <span className="font-mono text-[10px] text-muted">
-                  🔒 = requires approval
-                </span>
+                <span className="mono text-[11px] text-muted">🔒 = requires approval</span>
               </div>
-              <div className="mt-2 space-y-1.5">
+              <div className="mt-2 space-y-2">
                 {catalog.map((tool) => {
                   const on = tools.has(tool.id);
                   return (
                     <label
                       key={tool.id}
-                      className={`flex cursor-pointer items-start gap-2.5 rounded-[6px] border bg-surface p-2.5 ${
-                        on ? "border-muted" : "border-border hover:border-muted/60"
+                      className={`flex cursor-pointer items-start gap-3 rounded-[10px] border bg-paper p-3.5 ${
+                        on ? "border-accent/50" : "border-line hover:border-muted/60"
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={on}
                         onChange={() => toggleTool(tool.id)}
-                        className="mt-0.5 accent-[var(--success)]"
+                        className="mt-1 accent-[var(--accent)]"
                       />
                       <span className="flex-1">
-                        <span className="flex items-center gap-1.5 font-mono text-[12px] text-text">
+                        <span className="mono flex items-center gap-1.5 text-[13px] text-ink">
                           {tool.id}
                           {tool.requiresApproval && (
-                            <span
-                              className="font-mono text-[10px] text-pending"
-                              title="Requires approval"
-                            >
+                            <span className="text-[11px] text-accent" title="Requires approval">
                               🔒
                             </span>
                           )}
                         </span>
-                        <span className="block text-[11px] text-muted">
+                        <span className="block text-[13px] italic text-muted">
                           {tool.description}
                         </span>
                         {reasons[tool.id] && (
-                          <span className="mt-0.5 block font-mono text-[11px] text-success">
+                          <span className="mono mt-0.5 block text-[12px] text-success">
                             {reasons[tool.id]}
                           </span>
                         )}
@@ -310,22 +300,22 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
               </div>
             </div>
 
-            {saveError && <p className="text-[12px] text-pending">{saveError}</p>}
+            {saveError && <p className="text-[13px] italic text-accent">{saveError}</p>}
 
             <button
               onClick={save}
               disabled={!canSave || saving}
-              className="h-[34px] rounded-[6px] bg-primary px-4 text-[12px] font-medium text-primary-text hover:brightness-95 disabled:opacity-40"
+              className="mono rounded-full bg-ink px-6 py-3 text-[12px] tracking-[0.12em] text-paper hover:bg-ink/90 disabled:opacity-40"
             >
               {saving
-                ? "Saving…"
+                ? "SAVING…"
                 : mode === "create"
-                  ? "Create agent"
-                  : "Save new version"}
+                  ? "[ CREATE AGENT → ]"
+                  : "[ SAVE NEW VERSION → ]"}
             </button>
           </div>
         ) : (
-          <pre className="overflow-x-auto rounded-[6px] border border-border bg-bg p-3 font-mono text-[11px] leading-relaxed text-text">
+          <pre className="overflow-x-auto rounded-[10px] border border-line bg-paper p-4 font-mono text-[12px] leading-relaxed text-ink">
             {specYaml}
           </pre>
         )}
@@ -333,29 +323,27 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
 
       {/* Right rail: versions + publish (edit only) */}
       {mode === "edit" && detail && (
-        <aside className="space-y-3">
-          <div className="rounded-[6px] border border-border bg-panel p-3">
+        <aside className="space-y-4">
+          <div className="rounded-[10px] border border-line bg-panel p-4">
             <div className="flex items-center justify-between">
               <span className="label-mono">Versions</span>
-              <span className="font-mono text-[10px] text-muted">
-                current v{detail.version}
-              </span>
+              <span className="mono text-[11px] text-muted">current v{detail.version}</span>
             </div>
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-3 space-y-2">
               {detail.versions.map((v) => (
                 <li
                   key={v.version}
-                  className="flex items-center justify-between rounded-[6px] border border-border bg-surface px-2.5 py-1.5"
+                  className="flex items-center justify-between rounded-[10px] border border-line bg-paper px-3.5 py-2"
                 >
-                  <span className="flex items-center gap-1.5 font-mono text-[11px] text-text">
+                  <span className="mono flex items-center gap-1.5 text-[12px] text-ink">
                     v{v.version}
                     {v.isCurrent && (
-                      <span className="rounded-[3px] bg-surface px-1 text-[10px] text-muted">
+                      <span className="rounded-[4px] bg-raised px-1.5 text-[10px] text-muted">
                         current
                       </span>
                     )}
                     {v.isPublished && (
-                      <span className="rounded-[3px] bg-success/15 px-1 text-[10px] text-success">
+                      <span className="rounded-[4px] bg-success/15 px-1.5 text-[10px] text-success">
                         published
                       </span>
                     )}
@@ -364,9 +352,9 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
                     <button
                       onClick={() => onRollback(v.version)}
                       disabled={working}
-                      className="text-[11px] text-muted hover:text-text disabled:opacity-40"
+                      className="mono text-[11px] text-muted hover:text-ink disabled:opacity-40"
                     >
-                      Roll back
+                      roll back
                     </button>
                   )}
                 </li>
@@ -374,12 +362,12 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             </ul>
           </div>
 
-          <div className="rounded-[6px] border border-border bg-panel p-3">
+          <div className="rounded-[10px] border border-line bg-panel p-4">
             <span className="label-mono">Publish</span>
-            <p className="mt-1 text-[11px] text-muted">
+            <p className="mt-1.5 text-[13px] italic text-muted">
               Marks the current version production-ready.
             </p>
-            <label className="mt-2 flex items-center gap-2 text-[11px] text-muted">
+            <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
               <input
                 type="checkbox"
                 checked={testsPassed}
@@ -391,12 +379,12 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             <button
               onClick={onPublish}
               disabled={!testsPassed || working}
-              className="mt-2 h-[32px] w-full rounded-[6px] border border-success/40 bg-success/10 text-[12px] font-medium text-success hover:bg-success/20 disabled:opacity-40"
+              className="mono mt-3 w-full rounded-full border border-success/50 bg-success/10 py-2.5 text-[12px] tracking-[0.1em] text-success hover:bg-success/20 disabled:opacity-40"
             >
-              {detail.published ? `Republish v${detail.version}` : "Publish"}
+              {detail.published ? `REPUBLISH v${detail.version}` : "PUBLISH"}
             </button>
             {detail.published && (
-              <p className="mt-2 font-mono text-[11px] text-success">
+              <p className="mono mt-2 text-[12px] text-success">
                 published v{detail.publishedVersion}
               </p>
             )}

@@ -22,33 +22,33 @@ export default async function EditAgentPage({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
-        <Link href="/" className="hover:text-text">
+    <div className="space-y-6">
+      <div className="mono flex items-center gap-2 text-[12px] text-muted">
+        <Link href="/" className="hover:text-ink">
           agents
         </Link>
         <span>/</span>
-        <span className="text-text">{agent.id.slice(0, 8)}</span>
+        <span className="text-ink">{agent.id.slice(0, 8)}</span>
       </div>
 
       {/* Context header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-border bg-panel px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[13px] font-bold text-text">{agent.name}</span>
-          <span className="rounded-[4px] border border-border bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="font-serif text-[32px] leading-none">{agent.name}</h1>
+          <span className="mono rounded-[5px] border border-line bg-panel px-2 py-0.5 text-[12px] text-muted">
             v{agent.version}
           </span>
           {agent.published ? (
-            <span className="rounded-full bg-success/12 px-2 py-0.5 font-mono text-[10px] text-success">
+            <span className="mono rounded-full border border-success/40 bg-success/10 px-2.5 py-0.5 text-[11px] text-success">
               published v{agent.publishedVersion}
             </span>
           ) : (
-            <span className="rounded-full bg-pending/12 px-2 py-0.5 font-mono text-[10px] text-pending">
+            <span className="mono rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] text-accent">
               draft
             </span>
           )}
         </div>
-        <span className="font-mono text-[11px] text-muted">
+        <span className="mono text-[12px] text-muted">
           {agent.versions.length} version{agent.versions.length === 1 ? "" : "s"}
         </span>
       </div>
