@@ -1,24 +1,19 @@
 import { io } from "next/cache";
 import { Pill } from "@/components/ui/pill";
-import { currentOwner } from "@/lib/agents/library/http";
+import { pageOwner } from "@/lib/auth/session";
 import { getAgent } from "@/lib/agents/library/store";
 import { formatCost } from "@/lib/runs/format";
-import { getFixtureAgent, type AgentHeaderData } from "@/lib/fixtures/runs";
+import { type AgentHeaderData } from "@/lib/fixtures/runs";
 import { AgentTabs } from "./agent-tabs";
 
 /** Server-only: the saved agent from Dev 1's store (current version, published state, limits); fixture ids fall back to fake data. */
 export async function getAgentHeader(id: string): Promise<AgentHeaderData> {
   await io();
-  try {
-    const a = await getAgent(currentOwner(), id);
-    return { id: a.id, name: a.name, version: a.version, publishedVersion: a.publishedVersion,
-      status: a.published && a.publishedVersion === a.version ? "published" : "draft",
-      model: process.env.RUNTIME_MODEL_ID || a.config.model, toolCount: a.config.enabledTools.length,
-      costCapUsd: a.config.limits.maxEstimatedCostUsd, maxModelCalls: a.config.limits.maxModelCalls };
-  } catch (error) {
-    if (error instanceof Error && error.message === "agent_not_found") return getFixtureAgent(id);
-    throw error;
-  }
+  const a = await getAgent(await pageOwner(), id);
+  return { id: a.id, name: a.name, version: a.version, publishedVersion: a.publishedVersion,
+    status: a.published && a.publishedVersion === a.version ? "published" : "draft",
+    model: process.env.RUNTIME_MODEL_ID || a.config.model, toolCount: a.config.enabledTools.length,
+    costCapUsd: a.config.limits.maxEstimatedCostUsd, maxModelCalls: a.config.limits.maxModelCalls };
 }
 
 export function AgentHeader({ agent }: { agent: AgentHeaderData }) {

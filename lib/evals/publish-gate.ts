@@ -1,6 +1,5 @@
 import { io } from "next/cache";
 import { z } from "zod";
-import { currentOwner } from "@/lib/agents/library/http";
 import { getDb } from "@/lib/db/prisma";
 import type { TestRunReport } from "./types";
 
@@ -24,13 +23,14 @@ export type PublishStatus = {
 };
 
 /** The most recent TestRun for this exact agent version, or null. */
-export async function latestTestRun(agentId: string, agentVersion: number) {
+export async function latestTestRun(ownerId: string, agentId: string, agentVersion: number) {
+  if (!await getDb().agent.findFirst({ where: { id: agentId, ownerId } })) throw new Error("agent_not_found");
   return getDb().testRun.findFirst({ where: { agentId, agentVersion }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
 }
 
 /** Latest TestRun for a version in the Tests page's report shape; malformed stored results are skipped. */
-export async function latestTestReport(agentId: string, agentVersion: number): Promise<TestRunReport | null> {
-  const run = await latestTestRun(agentId, agentVersion);
+export async function latestTestReport(ownerId: string, agentId: string, agentVersion: number): Promise<TestRunReport | null> {
+  const run = await latestTestRun(ownerId, agentId, agentVersion);
   if (!run) return null;
   const results = (Array.isArray(run.results) ? run.results : [])
     .map(r => StoredResultSchema.safeParse(r)).filter(r => r.success).map(r => r.data);
@@ -42,13 +42,13 @@ export async function latestTestReport(agentId: string, agentVersion: number): P
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** Throws "agent_not_found". Without agentVersion, checks the agent's current version (Agent.version). */
-export async function getPublishStatus(agentId: string, agentVersion?: number): Promise<PublishStatus> {
+export async function getPublishStatus(ownerId: string, agentId: string, agentVersion?: number): Promise<PublishStatus> {
   await io(); // database reads run per request, not during prerendering
   const db = getDb();
-  const agent = await db.agent.findFirst({ where: { id: agentId, ownerId: currentOwner() }, select: { version: true } });
+  const agent = await db.agent.findFirst({ where: { id: agentId, ownerId }, select: { version: true } });
   if (!agent) throw new Error("agent_not_found");
   const version = agentVersion ?? agent.version;
-  const [testCount, run] = await Promise.all([db.testCase.count({ where: { agentId } }), latestTestRun(agentId, version)]);
+  const [testCount, run] = await Promise.all([db.testCase.count({ where: { agentId } }), latestTestRun(ownerId, agentId, version)]);
   const counts = { agentVersion: version, passedCount: run?.passedCount ?? 0, totalCount: run?.totalCount ?? 0, lastRunAt: run?.createdAt.toISOString() ?? null };
 
   if (testCount === 0) return { canPublish: false, reason: "Add at least one test before publishing", ...counts };

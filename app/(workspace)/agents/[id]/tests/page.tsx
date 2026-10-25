@@ -17,13 +17,15 @@ export const metadata: Metadata = { title: "Tests · AgentDepot" };
 const noQualityYet: QualitySummary = { previousVersion: null, previousPassRate: null, toolErrors: 0, mostCommonFailure: null };
 
 /** Saved cases, publish status and the latest TestRun for the current version; `now` formats "ran … ago". */
-async function loadSavedTests(agentId: string) {
-  const [cases, publish] = await Promise.all([listTestCases(agentId), getPublishStatus(agentId)]);
-  const report = await latestTestReport(agentId, publish.agentVersion);
+async function loadSavedTests(ownerId: string, agentId: string) {
+  const [cases, publish] = await Promise.all([listTestCases(ownerId, agentId), getPublishStatus(ownerId, agentId)]);
+  const report = await latestTestReport(ownerId, agentId, publish.agentVersion);
   return { cases, publish, report, now: Date.now() };
 }
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return null;
   const id = decodeURIComponent((await params).id);
   if (TESTS_SOURCE === "fixtures") {
     const agent = getFixtureAgent(id);
@@ -32,7 +34,7 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
   }
   let data, agent;
   try {
-    [data, agent] = await Promise.all([loadSavedTests(id), getAgentHeader(id)]);
+    [data, agent] = await Promise.all([loadSavedTests(ownerId, id), getAgentHeader(id)]);
   } catch (error) {
     if (error instanceof Error && error.message === "agent_not_found") notFound();
     throw error;

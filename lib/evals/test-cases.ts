@@ -1,6 +1,6 @@
 import { io } from "next/cache";
 import { ZodError, z } from "zod";
-import { configError, currentOwner } from "@/lib/agents/library/http";
+import { configError } from "@/lib/agents/library/http";
 import { getDb } from "@/lib/db/prisma";
 import { TestCaseInputSchema, TestSourceSchema } from "./schema";
 import type { TestCase } from "./types";
@@ -18,41 +18,41 @@ function toTestCase(r: Row): TestCase {
     useGrader: r.useGrader, source: TestSourceSchema.catch("user").parse(r.source) };
 }
 
-async function assertAgent(agentId: string) {
-  const agent = await getDb().agent.findFirst({ where: { id: agentId, ownerId: currentOwner() }, select: { id: true } });
+async function assertAgent(ownerId: string, agentId: string) {
+  const agent = await getDb().agent.findFirst({ where: { id: agentId, ownerId }, select: { id: true } });
   if (!agent) throw new Error("agent_not_found");
 }
 
-async function ownedTest(id: string) {
-  const row = await getDb().testCase.findFirst({ where: { id, agent: { ownerId: currentOwner() } } });
+async function ownedTest(ownerId: string, id: string) {
+  const row = await getDb().testCase.findFirst({ where: { id, agent: { ownerId } } });
   if (!row) throw new Error("test_not_found");
   return row;
 }
 
-export async function listTestCases(agentId: string): Promise<TestCase[]> {
+export async function listTestCases(ownerId: string, agentId: string): Promise<TestCase[]> {
   await io(); // database reads run per request, not during prerendering
-  await assertAgent(agentId);
+  await assertAgent(ownerId, agentId);
   const rows = await getDb().testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
   return rows.map(toTestCase);
 }
 
-export async function createTestCase(agentId: string, input: unknown): Promise<TestCase> {
+export async function createTestCase(ownerId: string, agentId: string, input: unknown): Promise<TestCase> {
   const data = TestCaseInputSchema.parse(input);
-  await assertAgent(agentId);
+  await assertAgent(ownerId, agentId);
   return toTestCase(await getDb().testCase.create({ data: { agentId, ...data } }));
 }
 
 /** Partial update: omitted fields keep their saved values; the merged result is validated as a whole. */
-export async function updateTestCase(id: string, input: unknown): Promise<TestCase> {
+export async function updateTestCase(ownerId: string, id: string, input: unknown): Promise<TestCase> {
   const patch = z.record(z.string(), z.unknown()).parse(input);
-  const existing = await ownedTest(id);
+  const existing = await ownedTest(ownerId, id);
   const data = TestCaseInputSchema.parse({ input: existing.input, mustCall: existing.mustCall, mustNotCall: existing.mustNotCall,
     mustContain: existing.mustContain, useGrader: existing.useGrader, source: TestSourceSchema.catch("user").parse(existing.source), ...patch });
   return toTestCase(await getDb().testCase.update({ where: { id }, data }));
 }
 
-export async function deleteTestCase(id: string): Promise<void> {
-  await ownedTest(id);
+export async function deleteTestCase(ownerId: string, id: string): Promise<void> {
+  await ownedTest(ownerId, id);
   await getDb().testCase.delete({ where: { id } });
 }
 
@@ -65,11 +65,11 @@ export type DraftTestCase =
   | { input: string; expectedBehavior: string };
 
 /** Saves draft-suggested tests with source "gemini". All-or-nothing: one invalid case saves none. */
-export async function createTestCasesFromDraft(agentId: string, testCases: DraftTestCase[]): Promise<TestCase[]> {
+export async function createTestCasesFromDraft(ownerId: string, agentId: string, testCases: DraftTestCase[]): Promise<TestCase[]> {
   const rows = testCases.map(tc => TestCaseInputSchema.parse("expectedBehavior" in tc
     ? { input: tc.input, useGrader: true, source: "gemini" }
     : { ...tc, source: "gemini" }));
-  await assertAgent(agentId);
+  await assertAgent(ownerId, agentId);
   const db = getDb();
   const created = await db.$transaction(rows.map(data => db.testCase.create({ data: { agentId, ...data } })));
   return created.map(toTestCase);

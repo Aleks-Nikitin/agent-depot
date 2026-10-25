@@ -13,8 +13,9 @@ import { listRuns } from "@/lib/runs/queries";
 export const metadata: Metadata = { title: "Runs · AgentDepot" };
 
 async function RunsContent() {
-  if (!await pageOwnerOrNull()) return null;
-  const { runs, now } = await listRuns();
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return null;
+  const { runs, now } = await listRuns(ownerId);
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.7fr)]">

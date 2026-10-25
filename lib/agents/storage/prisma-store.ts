@@ -18,6 +18,7 @@ export class PrismaRunStore {
   async createRun(config: AgentConfig, checkpoint: Checkpoint) {
     return this.db.agentRun.create({ data: {
       ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
+      agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : "playground",
     } });
   }
   async loadRun(runId: string, ownerId: string) {

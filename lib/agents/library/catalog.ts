@@ -1,4 +1,4 @@
-import { demoTools } from "@/lib/integrations/demo-tools";
+import { runtimeTools } from "@/lib/integrations/runtime-tools";
 
 export type ToolCatalogEntry = {
   id: string;
@@ -9,7 +9,7 @@ export type ToolCatalogEntry = {
 
 // Single source of truth for the builder's tool picker, derived from the
 // runtime registry so the UI never drifts from what actually runs.
-export const toolCatalog: ToolCatalogEntry[] = demoTools.map((tool) => ({
+export const toolCatalog: ToolCatalogEntry[] = runtimeTools.map((tool) => ({
   id: tool.id,
   description: tool.description,
   kind: tool.kind,

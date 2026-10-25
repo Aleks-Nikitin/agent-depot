@@ -1,6 +1,9 @@
+import { currentOwner, configError } from "@/lib/agents/library/http";
 import { getProducts } from "@/lib/integrations/store";
 
-export async function GET() {
+export async function GET(request: Request) {
+  try {
+    await currentOwner(request);
   const products = getProducts();
   return Response.json({
     source: "acme_sales",
@@ -8,4 +11,5 @@ export async function GET() {
     count: products.length,
     products,
   });
+  } catch (error) { return configError(error); }
 }

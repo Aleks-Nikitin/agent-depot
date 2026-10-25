@@ -12,6 +12,7 @@
 developer-2-runtime-plan.md
 # testing
 /coverage
+/.cache/
 
 # next.js
 /.next/

@@ -26,9 +26,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 async function RunDetailContent({ params }: { params: Promise<{ runId: string }> }) {
-  if (!await pageOwnerOrNull()) return null;
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return null;
   const { runId } = await params;
-  const found = await getRun(decodeURIComponent(runId));
+  const found = await getRun(ownerId, decodeURIComponent(runId));
   if (!found) notFound();
   const { run, now } = found;
   const trace = deriveTrace(run.events);

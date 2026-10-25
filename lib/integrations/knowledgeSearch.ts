@@ -85,33 +85,22 @@ function matchedSentence(text: string, keywords: string[]): string {
   return best.trim();
 }
 
+export function searchKnowledge(args: unknown, docs: KnowledgeDoc[]) {
+    const { query } = input.parse(args);
+    const keywords = queryWords(query);
+    const ranked = docs
+      .map(doc => ({ id: doc.id, title: doc.title, text: doc.text, score: scoreDoc(doc, keywords), matchedSentence: matchedSentence(doc.text, keywords) }))
+      .filter(doc => doc.score > 0)
+      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, 2);
+    return { source: "acme_knowledge", query, matches: ranked };
+}
+
 export const knowledgeSearch: Tool = {
   id: "knowledge_search",
   description: "Search AcmeStore policy documents for returns, shipping, and refunds.",
   input,
   kind: "read",
   async run(args) {
-    const { query } = input.parse(args);
-    const keywords = queryWords(query);
-    const ranked = getKnowledgeDocs()
-      .map((doc) => {
-        const score = scoreDoc(doc, keywords);
-        return {
-          id: doc.id,
-          title: doc.title,
-          text: doc.text,
-          score,
-          matchedSentence: matchedSentence(doc.text, keywords),
-        };
-      })
-      .filter((doc) => doc.score > 0)
-      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
-      .slice(0, 2);
-
-    return {
-      source: "acme_knowledge",
-      query,
-      matches: ranked,
-    };
+    return searchKnowledge(args, getKnowledgeDocs());
   },
 };

@@ -132,6 +132,7 @@ model AgentRun {
   events         RunEvent[]
   approvals      Approval[]
   metrics        RuntimeMetric[]
+  recordedEmails RecordedEmail[]
 
   @@index([ownerId, createdAt])
   @@index([agentId, createdAt])
@@ -194,6 +195,32 @@ model DemoTicket {
   idempotencyKey String   @unique
   subject        String
   createdAt      DateTime @default(now())
+}
+
+model KnowledgeDocument {
+  id        String   @id @default(uuid())
+  ownerId   String
+  title     String
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, createdAt])
+}
+
+model RecordedEmail {
+  id             String   @id @default(uuid())
+  ownerId        String
+  runId          String
+  toolCallId     String
+  idempotencyKey String   @unique
+  to             String
+  subject        String
+  body           String
+  createdAt      DateTime @default(now())
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
 }
 
 // NEW
