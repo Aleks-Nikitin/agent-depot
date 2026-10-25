@@ -113,3 +113,31 @@ it("human rejection prevents side effects and preserves model limits across resu
   expect(resumed.runId).toBe(result.runId); expect(resumed.stopReason).toBe("step_limit");
   expect(tools.run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
 });
+
+it("records a conservative reservation when a provider hangs or fails", async () => {
+  for (const hanging of [false, true]) {
+    const model: ModelDriver = { key: "test", estimate: (i, o) => (i + o) / 1_000_000,
+      turn: vi.fn(async () => { if (hanging) return new Promise<ModelTurn>(() => {}); throw new Error("provider-secret-must-not-leak"); }) };
+    const { result, events } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 250 } }, model);
+    expect(result.status).toBe("failed");
+    expect(result.usage.estimatedCostUsd).toBeGreaterThan(0);
+    expect(result.usage.inputTokens).toBeNull();
+    expect(JSON.stringify(events)).not.toContain("provider-secret");
+  }
+});
+it("stops after reported usage exhausts the budget and before any tool executes", async () => {
+  const model = driver([{ ...request({ toolId: "knowledge_search", toolCallId: "cost", input: { query: "test" } }), inputTokens: 100_000 }]);
+  const { result, tools } = await execute(supportAgent, model);
+  expect(result.stopReason).toBe("budget_limit");
+  expect(model.turn).toHaveBeenCalledOnce(); expect(tools.run).not.toHaveBeenCalled();
+});
+it("does not dispatch a model request when saving its checkpoint fails", async () => {
+  const failing = new PrismaRunStore(db);
+  vi.spyOn(failing, "saveCheckpoint").mockRejectedValueOnce(new Error("storage failure"));
+  const model = driver([answer()]);
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store: failing, registry: registry().tools, driver: model,
+    onEvent(e) { if (e.type === "run_started") created.push(e.runId); },
+  });
+  expect(result.status).toBe("failed"); expect(model.turn).not.toHaveBeenCalled();
+});

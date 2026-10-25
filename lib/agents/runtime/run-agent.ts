@@ -4,6 +4,7 @@ import type { RunStore } from "../storage/prisma-store";
 import { dispatchTool, enabledTools, permittedTool, type ToolRegistry } from "../tools/registry";
 import type { ModelDriver } from "./model";
 import type { Checkpoint, PendingCall } from "./state";
+import { withCancellation } from "./cancellation";
 
 export type RuntimeDependencies = {
   store: RunStore; registry: ToolRegistry; driver: ModelDriver;
@@ -101,8 +102,8 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         const started = Date.now();
         let output: unknown;
         try {
-          output = await dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
-            context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } });
+          output = await withCancellation(signal, () => dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
+            context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
         } catch (error) {
           await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason: "tool_execution_failed" } });
           throw error;
@@ -120,24 +121,29 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       const reserved = deps.driver.estimate(bytes + 4096, config.limits.maxOutputTokens);
       guard(Number.isFinite(reserved) && reserved >= 0, "pricing_unknown");
       guard(state.usage.estimatedCostUsd! + reserved <= config.limits.maxEstimatedCostUsd, "budget_limit");
+      const previousUsage = { ...state.usage };
+      // Persist a conservative reservation before dispatch: an interrupted call
+      // may still be billed and must not appear as free in saved history.
+      state.usage = { inputTokens: null, outputTokens: null, estimatedCostUsd: previousUsage.estimatedCostUsd! + reserved };
       state.modelCalls++; await save();
       await emit({ type: "model_started", payload: { step: state.modelCalls } });
-      const turn = await deps.driver.turn(config, state.messages as ModelMessage[], tools, signal);
+      const turn = await withCancellation(signal, () => deps.driver.turn(config, state.messages as ModelMessage[], tools, signal));
       signal.throwIfAborted();
       const usageKnown = turn.inputTokens !== null && turn.outputTokens !== null
         && Number.isFinite(turn.inputTokens) && Number.isFinite(turn.outputTokens)
         && turn.inputTokens >= 0 && turn.outputTokens >= 0;
       const cost = usageKnown ? deps.driver.estimate(turn.inputTokens!, turn.outputTokens!) : null;
       state.usage = {
-        inputTokens: usageKnown ? state.usage.inputTokens! + turn.inputTokens! : null,
-        outputTokens: usageKnown ? state.usage.outputTokens! + turn.outputTokens! : null,
-        estimatedCostUsd: cost !== null && Number.isFinite(cost) && cost >= 0 ? state.usage.estimatedCostUsd! + cost : null,
+        inputTokens: usageKnown ? previousUsage.inputTokens! + turn.inputTokens! : null,
+        outputTokens: usageKnown ? previousUsage.outputTokens! + turn.outputTokens! : null,
+        estimatedCostUsd: cost !== null && Number.isFinite(cost) && cost >= 0 ? previousUsage.estimatedCostUsd! + cost : null,
       };
       state.messages.push(...turn.messages);
       await save();
       await emit({ type: "model_finished", payload: { inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, estimatedCostUsd: cost } });
       guard(state.usage.estimatedCostUsd !== null, "usage_unknown");
       guard(state.usage.estimatedCostUsd <= config.limits.maxEstimatedCostUsd, "budget_limit");
+      guard(turn.outputTokens! <= config.limits.maxOutputTokens, "output_limit");
       if (turn.calls.length) {
         guard(turn.calls.length <= config.limits.maxToolCalls - state.toolCalls, "tool_limit");
         for (const call of turn.calls) {
