@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { getDb } from "../db/prisma";
 import { createRegistry, type ToolDefinition } from "../agents/tools/registry";
 
@@ -35,11 +36,17 @@ export const demoTools: ToolDefinition[] = [
     async run(input, context) {
       context.signal.throwIfAborted();
       const { subject } = ticketSchema.parse(input);
-      return getDb().demoTicket.upsert({
-        where: { idempotencyKey: context.idempotencyKey }, update: {},
-        create: { ownerId: context.ownerId, subject, idempotencyKey: context.idempotencyKey },
-        select: { id: true, subject: true },
-      });
+      const db = getDb();
+      // An empty Prisma upsert update can become a read-then-insert operation.
+      // PostgreSQL owns the conflict arbitration even for simultaneous calls.
+      await db.$executeRaw`
+        INSERT INTO "DemoTicket" ("id", "ownerId", "idempotencyKey", "subject", "createdAt")
+        VALUES (${randomUUID()}, ${context.ownerId}, ${context.idempotencyKey}, ${subject}, ${new Date()})
+        ON CONFLICT ("idempotencyKey") DO NOTHING
+      `;
+      const ticket = await db.demoTicket.findUniqueOrThrow({ where: { idempotencyKey: context.idempotencyKey } });
+      if (ticket.ownerId !== context.ownerId || ticket.subject !== subject) throw new Error("idempotency_conflict");
+      return { id: ticket.id, subject: ticket.subject };
     },
   },
 ];

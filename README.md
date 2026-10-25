@@ -1,6 +1,6 @@
 # Agent Depot / AgentForge
 
-Next.js agent platform with Prisma ORM and PostgreSQL. The Developer 2 implementation specification is in `docs/developer-2-runtime-plan.md` (local backbone, currently ignored by Git).
+Next.js agent platform with Prisma ORM and PostgreSQL. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
 
 ## Start locally
 
@@ -13,6 +13,7 @@ npm run db:up
 npm run db:generate
 npm run db:deploy
 npm run db:check
+npm run db:seed-demo
 npm run dev
 ```
 
@@ -30,26 +31,27 @@ npm run db:deploy     # Apply committed migrations
 npm run db:migrate -- --name describe_change  # Create/apply a development migration
 npm run db:studio     # Inspect records using Prisma Studio
 npm run db:check      # Prisma transaction smoke check; cleans up only its own test record
+npm run db:seed-demo  # Add support-demo/sales-demo without replacing existing agents
 npm run db:down       # Stop containers, preserving data
 ```
 
-One developer owns `prisma/schema.prisma` and migrations. Commit schema and migration changes together. After pulling schema changes, run `db:generate` and `db:deploy`. The generated client and real `.env` stay out of Git.
+Maintain one coordinated migration history for `prisma/schema.prisma`. Commit schema and migration changes together. After pulling schema changes, run `db:generate` and `db:deploy`. The generated client and real `.env` stay out of Git.
 
 Do not delete the Compose volume unless you intend to erase local data. PostgreSQL initialization settings only apply to a new volume: changing `.env` does not rotate an existing database password.
 
 ## Shared storage assumptions
 
-- `Agent`: owner-scoped configuration for Developer 1.
+- `Agent`: owner-scoped saved agent configuration.
 - `AgentRun`: immutable configuration snapshot, status, version, private checkpoint, final answer.
-- `RunEvent`: durable ordered events; unique event ID and run/sequence pair for Developer 3.
+- `RunEvent`: durable ordered events; unique event ID and run/sequence pair for history and monitoring.
 - `Approval`: exact stored tool arguments, expiry, and one recorded decision.
 - `DemoTicket`: a local write with a unique idempotency key for approval demonstrations.
 
-Run snapshots retain history independently of agent deletion/edits. Checkpoints remain server-only. The runtime storage adapter will implement atomic pause/claim/finish operations against this schema; schema creation alone does not implement the adapter.
+Run snapshots retain history independently of agent deletion/edits. Checkpoints remain server-only. The runtime storage adapter implements atomic pause/claim/finish operations against this schema.
 
 ## Configuration and verification
 
-Use `.env.example` as the template. Never expose database or model credentials through `NEXT_PUBLIC_*`. Runtime credentials/model/pricing fields are reserved for the next runtime milestones.
+Use `.env.example` as the template. Never expose database or model credentials through `NEXT_PUBLIC_*`. Runtime execution requires the credentials/model/pricing configuration in the linked Runtime README.
 
 ```bash
 npm run typecheck
@@ -57,4 +59,10 @@ npm run lint
 npm run build
 ```
 
-`npm test` runs the runtime tests once those are added. Database checks require the container to be healthy. Prisma schema/config follow the installed Prisma 7 conventions, including the PostgreSQL driver adapter.
+`npm test` runs deterministic contract, registry, transport, and drafting unit tests. `npm run test:integration` runs the PostgreSQL-backed store, runtime, approval and idempotency tests and deletes only test-created records. Database checks require the container to be healthy. Prisma schema/config follow the installed Prisma 7 conventions, including the PostgreSQL driver adapter.
+
+## Runtime integration
+
+See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
+
+`npm run dev` and `npm run build` retain Next.js's default **Turbopack**. This environment's Turbopack CSS worker currently cannot bind its internal port; the recorded webpack command is a verification fallback only, not a change to the project's stack or scripts.
