@@ -12,7 +12,7 @@ const created: string[] = [];
 const ownerId = `timescale-${randomUUID()}`;
 afterAll(async () => { await db.agentRun.deleteMany({ where: { id: { in: created } } }); await db.$disconnect(); });
 async function finish(agentId: string, finishedAt: Date, unknown = false) {
-  const state: Checkpoint = { schemaVersion: 1, messages: [], pending: [], seenCallIds: [], modelCalls: 1, toolCalls: 0,
+  const state: Checkpoint = { schemaVersion: 1, messages: [], pending: [], seenCallIds: [], writeCalls: 0, modelCalls: 1, toolCalls: 0,
     usage: { inputTokens: unknown ? null : 10, outputTokens: unknown ? null : 5, estimatedCostUsd: unknown ? null : 0.001 },
     startedAt: Date.now(), activeMs: 50, approvalMode: "human", driverKey: "test" };
   const run = await store.createRun({ ...supportAgent, id: agentId, ownerId }, state); created.push(run.id);

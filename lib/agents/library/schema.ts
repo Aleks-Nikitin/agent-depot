@@ -7,8 +7,10 @@ export const AgentInputSchema = z
   .object({
     name: z.string().trim().min(1).max(100),
     instructions: z.string().trim().min(1).max(8000),
+    workspaceName: z.string().trim().min(1).max(80).optional(),
     model: z.literal("gemini").default("gemini"),
     enabledTools: z.array(z.string().min(1).max(100)).max(10).default([]),
+    requireWriteApproval: z.boolean().default(true),
     limits: LimitsSchema.partial().optional(),
     testCases: z.array(TestCaseInputSchema).max(5).optional(),
   })

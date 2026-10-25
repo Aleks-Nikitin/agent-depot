@@ -12,13 +12,13 @@ const input = { name: "Saved configuration", instructions: "Answer from knowledg
 afterAll(async () => { await db.agent.deleteMany({ where: { ownerId: owner } }); await db.$disconnect(); });
 
 it("serializes revision saves and restores exact permissions and limits as a new version", async () => {
-  const initial = await createAgent(owner, { ...input, limits: { maxModelCalls: 3, maxEstimatedCostUsd: 0.01 } });
+  const initial = await createAgent(owner, { ...input, requireWriteApproval: false, limits: { maxModelCalls: 3, maxEstimatedCostUsd: 0.01 } });
   await Promise.all([updateAgent(owner, initial.id, { ...input, name: "Revision A" }), updateAgent(owner, initial.id, { ...input, name: "Revision B" })]);
   const edited = await getAgent(owner, initial.id);
   expect(edited.version).toBe(3);
   expect(edited.versions.map(v => v.version)).toEqual([3, 2, 1]);
   const restored = await rollbackAgent(owner, initial.id, 1);
-  expect(restored).toMatchObject({ version: 4, config: { name: input.name, version: 4, enabledTools: ["knowledge_search"], limits: { maxModelCalls: 3, maxEstimatedCostUsd: 0.01 } } });
+  expect(restored).toMatchObject({ version: 4, config: { name: input.name, version: 4, requireWriteApproval: false, enabledTools: ["knowledge_search"], limits: { maxModelCalls: 3, maxEstimatedCostUsd: 0.01 } } });
   expect((await getPublishStatus(owner, initial.id)).canPublish).toBe(false);
   await expect(rollbackAgent("another-owner", initial.id, 1)).rejects.toThrow("agent_not_found");
 });

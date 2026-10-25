@@ -17,7 +17,7 @@ export function AccountMenu() {
     try {
       const result = await signOut();
       if (result.error) { setError(true); setPending(false); }
-      else { router.replace("/auth"); router.refresh(); }
+      else { router.replace("/"); router.refresh(); }
     } catch { setError(true); setPending(false); }
   }
   return <div className="flex items-center gap-2 text-sm">

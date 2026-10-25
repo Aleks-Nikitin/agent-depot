@@ -5,7 +5,7 @@ function scalar(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   const text = String(value);
   if (text === "") return '""';
-  if (/^[A-Za-z0-9_.-]+$/.test(text)) return text;
+
   return JSON.stringify(text);
 }
 
@@ -27,6 +27,7 @@ function render(value: unknown, indent: number): string {
   if (value !== null && typeof value === "object") {
     return Object.entries(value as Record<string, unknown>)
       .map(([key, child]) => {
+        if (Array.isArray(child) && child.length === 0) return `${pad}${key}: []\n`;
         if (Array.isArray(child) && child.length > 0) {
           return `${pad}${key}:\n${render(child, indent)}`;
         }

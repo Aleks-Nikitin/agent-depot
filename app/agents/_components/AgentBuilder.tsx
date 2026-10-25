@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, useEffect } from "react";
+import { useSession } from "@/lib/auth-client";
+import { Dialog } from "@/components/ui/dialog";
+import AuthClientPage from "@/app/auth/auth-client";
 import Link from "next/link";
 import { TestCaseInputSchema, type TestCaseInput } from "@/lib/evals/schema";
 import { useRouter } from "next/navigation";
@@ -21,15 +24,22 @@ type Props = {
   templates: AgentTemplate[];
   initial?: AgentDetail;
   initialTemplate?: AgentTemplate;
+  workspaceName?: string;
+  githubEnabled?: boolean;
 };
 
 type Tab = "form" | "spec";
 
-export default function AgentBuilder({ mode, catalog, templates, initial, initialTemplate }: Props) {
+export default function AgentBuilder({ mode, catalog, templates, initial, initialTemplate, workspaceName = "Guest", githubEnabled = false }: Props) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [companyName, setCompanyName] = useState(initial?.config.workspaceName ?? workspaceName);
+  const personalize = (value: string) => value.replaceAll("{{workspace}}", companyName);
 
-  const [name, setName] = useState(initial?.name ?? initialTemplate?.name ?? "");
-  const [instructions, setInstructions] = useState(initial?.config.instructions ?? initialTemplate?.instructions ?? "");
+
+  const [name, setName] = useState(initial?.name ?? initialTemplate?.name.replaceAll("{{workspace}}", workspaceName) ?? "");
+  const [instructions, setInstructions] = useState(initial?.config.instructions ?? initialTemplate?.instructions.replaceAll("{{workspace}}", workspaceName) ?? "");
   const [tools, setTools] = useState<Set<string>>(
     new Set(initial?.config.enabledTools ?? initialTemplate?.enabledTools ?? []),
   );
@@ -48,8 +58,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
   const [detail, setDetail] = useState<AgentDetail | undefined>(initial);
   const [suggestedTests, setSuggestedTests] = useState<TestCaseInput[]>(initialTemplate?.testCases ?? []);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [maxWrites, setMaxWrites] = useState(initial?.config.limits.maxWriteCalls ?? 2);
   const [maxCalls, setMaxCalls] = useState(initial?.config.limits.maxModelCalls ?? 5);
   const [costCap, setCostCap] = useState(initial?.config.limits.maxEstimatedCostUsd ?? 0.05);
+  const [requireWriteApproval, setRequireWriteApproval] = useState(initial?.config.requireWriteApproval ?? false);
   const [working, setWorking] = useState(false);
 
   const toggleTool = (id: string) => {
@@ -62,15 +74,17 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
   };
 
   const applyTemplate = (template: AgentTemplate) => {
-    setName(template.name);
-    setInstructions(template.instructions);
+    setName(personalize(template.name));
+    setInstructions(personalize(template.instructions));
     setTools(new Set(template.enabledTools));
     setAssumptions([]);
     setReasons({});
     setSuggestedTests(template.testCases ?? []);
+    if (mode === "edit") setSaveNotice("Template applied to the configuration. Existing tests are kept; review them in Tests after saving.");
   };
 
   const runDraft = () => {
+    if (!session) { requestSignIn(); return; }
     setDraftError(null);
     startDraft(async () => {
       const result = await draftAgentAction(goal);
@@ -80,10 +94,11 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
       }
       const draft = result.draft;
       setName(draft.name);
+      if (mode === "edit") setSaveNotice("Draft applied. Existing tests are kept; review them in Tests after saving.");
       setInstructions(draft.instructions);
       setTools(new Set(draft.tools.map((t) => t.id)));
       setAssumptions(draft.assumptions);
-      setSuggestedTests(draft.suggestedTests.map(test => TestCaseInputSchema.parse({ ...test, useGrader: true, source: "gemini" })));
+      setSuggestedTests(draft.suggestedTests.slice(0, 5).map(test => TestCaseInputSchema.parse({ ...test, useGrader: true, source: "gemini" })));
       setReasons(Object.fromEntries(draft.tools.map((t) => [t.id, t.reason])));
     });
   };
@@ -91,13 +106,15 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
   const input = useMemo(
     () => ({
       name: name.trim(),
+      workspaceName: companyName.trim(),
       instructions: instructions.trim(),
       model: "gemini" as const,
       enabledTools: [...tools],
-      limits: { ...initial?.config.limits, maxModelCalls: maxCalls, maxEstimatedCostUsd: costCap },
+      requireWriteApproval,
+      limits: { ...initial?.config.limits, maxModelCalls: maxCalls, maxWriteCalls: maxWrites, maxEstimatedCostUsd: costCap },
       ...(mode === "create" && suggestedTests.length ? { testCases: suggestedTests } : {}),
     }),
-    [name, instructions, tools, maxCalls, costCap, mode, suggestedTests, initial],
+    [name, companyName, instructions, tools, requireWriteApproval, maxCalls, maxWrites, costCap, mode, suggestedTests, initial],
   );
 
   const specYaml = useMemo(
@@ -105,17 +122,19 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
       toYaml({
         name: input.name || "(unnamed)",
         model: input.model,
+        workspaceName: input.workspaceName,
         instructions: input.instructions || "(empty)",
         enabledTools: input.enabledTools,
-        requireWriteApproval: true,
+        requireWriteApproval: input.requireWriteApproval,
         limits: input.limits,
       }),
     [input],
   );
 
-  const canSave = input.name.length > 0 && input.instructions.length > 0 && maxCalls >= 1 && maxCalls <= 10 && costCap > 0 && costCap <= 1;
+  const canSave = companyName.trim().length > 0 && input.name.length > 0 && input.instructions.length > 0 && Number.isInteger(maxCalls) && Number.isInteger(maxWrites) && maxWrites >= 1 && maxWrites <= 5 && maxCalls >= 1 && maxCalls <= 10 && costCap > 0 && costCap <= 1;
 
   const save = async () => {
+    if (!session) { requestSignIn(); return; }
     setSaveError(null);
     setSaving(true);
     try {
@@ -133,6 +152,45 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
     }
   };
 
+  function requestSignIn() {
+    try { sessionStorage.setItem("agent-builder-pending", JSON.stringify({ name, instructions, tools: [...tools], companyName, goal, suggestedTests, maxCalls, maxWrites, costCap, requireWriteApproval })); } catch { /* Sign-in still works when tab storage is unavailable. */ }
+    setAuthOpen(true);
+  }
+  useEffect(() => {
+    let pending: string | null = null;
+    try { pending = sessionStorage.getItem("agent-builder-pending"); } catch { return; }
+    if (!pending || mode !== "create") return;
+    try {
+      const value = JSON.parse(pending);
+      // Restore only this tab's bounded form fields after an OAuth round trip.
+      if (typeof value.name === "string" && typeof value.instructions === "string" && Array.isArray(value.tools)) {
+        /* eslint-disable react-hooks/set-state-in-effect */
+        setName(value.name.slice(0, 100)); setInstructions(value.instructions.slice(0, 8000));
+        setTools(new Set(value.tools.filter((id: unknown): id is string => typeof id === "string" && catalog.some(tool => tool.id === id))));
+        if (typeof value.companyName === "string") setCompanyName(value.companyName.slice(0, 80));
+        if (Number.isInteger(value.maxWrites) && value.maxWrites >= 1 && value.maxWrites <= 5) setMaxWrites(value.maxWrites);
+        if (Number.isInteger(value.maxCalls) && value.maxCalls >= 1 && value.maxCalls <= 10) setMaxCalls(value.maxCalls);
+        if (typeof value.costCap === "number" && Number.isFinite(value.costCap) && value.costCap > 0 && value.costCap <= 1) setCostCap(value.costCap);
+        if (typeof value.requireWriteApproval === "boolean") setRequireWriteApproval(value.requireWriteApproval);
+        if (typeof value.goal === "string") setGoal(value.goal.slice(0, 8000));
+        if (Array.isArray(value.suggestedTests)) setSuggestedTests(value.suggestedTests.slice(0, 5).flatMap((test: unknown) => { const parsed = TestCaseInputSchema.safeParse(test); return parsed.success ? [parsed.data] : []; }));
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
+    } catch { /* Invalid tab-local drafts are ignored. */ }
+    try { sessionStorage.removeItem("agent-builder-pending"); } catch {}
+  }, [mode, catalog]);
+
+  useEffect(() => {
+    if (!session?.user || session.user.isAnonymous || companyName !== "Guest" || !name.startsWith("Guest's")) return;
+    const label = session.user.name.trim().slice(0, 80);
+    if (!label || label === "Guest") return;
+    // Preserve the public draft while personalizing the starter after account creation.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCompanyName(label); setName(text => text.replace("Guest's", `${label}'s`).slice(0, 100));
+    setInstructions(text => text.replaceAll("Guest's", `${label}'s`));
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [session, companyName, name]);
+
   const onRollback = async (version: number) => {
     if (!detail) return;
     setWorking(true);
@@ -142,6 +200,9 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
       setName(updated.name);
       setInstructions(updated.config.instructions);
       setTools(new Set(updated.config.enabledTools));
+      setCompanyName(updated.config.workspaceName ?? workspaceName);
+      setRequireWriteApproval(updated.config.requireWriteApproval);
+      setMaxWrites(updated.config.limits.maxWriteCalls);
       setMaxCalls(updated.config.limits.maxModelCalls);
       setCostCap(updated.config.limits.maxEstimatedCostUsd);
       try { await evaluateSavedAgent(updated.id); } catch { setSaveNotice("Version restored. Open Tests to retry evaluation."); }
@@ -156,6 +217,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <Dialog open={authOpen} onClose={() => { setAuthOpen(false); try { sessionStorage.removeItem("agent-builder-pending"); } catch {} }} title="Save your agent workspace" className="max-h-[90vh] overflow-y-auto"><AuthClientPage githubEnabled={githubEnabled} callbackFailed={false} embedded callbackURL="/agents/new" onAuthenticated={() => { setAuthOpen(false); try { sessionStorage.removeItem("agent-builder-pending"); } catch {} }} /></Dialog>
       <div>
         {saveNotice && <p role="status" className="mb-4 rounded-lg border border-sky-400/30 bg-sky-400/10 p-3 text-sm">{saveNotice}</p>}
         {mode === "create" && suggestedTests.length > 0 && <p className="mb-4 text-sm text-sky-300">{suggestedTests.length} suggested tests will be saved and run with this agent. Review them in Tests.</p>}
@@ -185,6 +247,12 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
           )}
         </section>
 
+        <label className="mb-6 block text-sm">Store or workspace name<input value={companyName} maxLength={80} onChange={event => {
+          const next = event.target.value; const old = companyName;
+          setCompanyName(next); if (name === `${old}'s Customer Support`) setName(`${next}'s Customer Support`);
+          setInstructions(text => text.replaceAll(`${old}'s`, `${next}'s`));
+        }} className="mt-2 block w-full rounded-md border border-white/15 bg-black/30 px-3 py-2" /><span className="mt-2 block text-xs text-zinc-400">Used by starter templates. Edit the agent name and instructions as needed.</span></label>
+        <label className="mb-6 flex items-start gap-3 text-sm"><input type="checkbox" checked={requireWriteApproval} onChange={event => setRequireWriteApproval(event.target.checked)} /><span>Require human approval for writes<span className="mt-1 block text-xs text-zinc-400">Off: supported tools execute automatically within server restrictions and the per-run write limit. Unsupported writes still need approval.</span></span></label>
         {/* Templates */}
         <section className="mb-6">
           <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
@@ -263,12 +331,13 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm">Model step limit<input type="number" min={1} max={10} value={maxCalls} onChange={event => setMaxCalls(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
+              <label className="text-sm">Write action limit<input type="number" min={1} max={5} step={1} value={maxWrites} onChange={event => setMaxWrites(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
               <label className="text-sm">Estimated model cost cap (USD)<input type="number" min={0.001} max={1} step={0.001} value={costCap} onChange={event => setCostCap(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
             </div>
             <div>
               <label className="text-sm font-medium">Tools</label>
               <p className="text-xs text-zinc-500">
-                🔒 marks write tools that require human approval at run time.
+                Write tools follow the saved policy and server-side restrictions. Tests always deny writes.
               </p>
               <div className="mt-2 space-y-2">
                 {catalog.map((tool) => (
@@ -286,11 +355,11 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                       <span className="flex items-center gap-2 font-mono text-sm">
                         {tool.id}
                         {tool.requiresApproval && (
-                          <span title="Requires approval">🔒</span>
+                          <span title="Write action">↗</span>
                         )}
                       </span>
                       <span className="block text-xs text-zinc-400">
-                        {tool.description}
+                        {tool.description}{tool.deliveryMode && <span className="ml-2 text-sky-300">({tool.deliveryMode === "record" ? "record only; no delivery" : "Brevo delivery; recipient restrictions apply"})</span>}
                       </span>
                       {reasons[tool.id] && (
                         <span className="mt-1 block text-xs text-sky-300">

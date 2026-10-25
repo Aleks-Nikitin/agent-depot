@@ -46,7 +46,7 @@ function TurnReply({ trace, agentName, busy, error, interrupted, selected, onSel
       const a = trace.pendingApproval!;
       return (
         <NoticeBubble kind="approval" title={`Waiting for approval to ${toolPhrase[a.toolId] ?? `run ${a.toolId}`}`} meta={`Trace step #${approvalStep(trace.items)}`}>
-          Policy requires a human to approve every write tool. Review the exact action in the trace.
+          The saved policy or this tool’s restrictions require review for this action. Check the exact arguments in the trace.
         </NoticeBubble>
       );
     }
@@ -119,7 +119,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
           <div ref={endRef} />
         </div>
         <div className="shrink-0 border-t border-(--ad-border) p-4">
-          <MessageComposer onSend={send} disabled={run.busy} initial="Can I return a jacket after 20 days?" />
+          <MessageComposer onSend={send} disabled={run.busy} />
         </div>
       </Card>
 
@@ -150,7 +150,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
               emptyState={<p className="py-16 text-center text-sm text-(--ad-muted)">Send a message to start a run. Every model step and tool call appears here as it happens.</p>} />
           </div>
           <div className="ad-mono flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-(--ad-border) px-5 py-3 text-xs text-(--ad-muted)">
-            <span>Guardrails: write tools need approval · cost cap {formatCost(agent.costCapUsd)} · max {agent.maxModelCalls} steps</span>
+            <span>Guardrails: saved write policy enforced · cost cap {formatCost(agent.costCapUsd)} · max {agent.maxModelCalls} steps</span>
             {CLIENT_MODE === "mock" && <span className={cn("ml-auto rounded border border-(--ad-border) px-1.5 py-0.5")}>Simulated runtime · fixture data</span>}
           </div>
         </Card>

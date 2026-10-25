@@ -8,6 +8,7 @@ export type ModelItem = {
 export type ToolItem = {
   kind: "tool"; id: string; sequence: number; toolId: string; input: unknown;
   status: "requested" | "awaiting_approval" | "running" | "succeeded" | "failed" | "denied";
+  authorization?: "read" | "human" | "policy";
   output: unknown; reason: string | null; durationMs: number | null;
 };
 export type ApprovalItem = {
@@ -105,7 +106,7 @@ export function deriveTrace(input: RunStep[]): Trace {
         model.status = "done"; model.usage = e.payload; model.tokens = usageTokens(e.payload);
         model.durationMs = modelStartedAt ? elapsed(modelStartedAt, e.timestamp) : null; break;
       case "tool_requested": tool(e, e.payload); break;
-      case "tool_started": tool(e, e.payload).status = "running"; toolStartedAt.set(e.payload.toolCallId, e.timestamp); break;
+      case "tool_started": tool(e, e.payload).authorization = e.payload.authorization; tool(e, e.payload).status = "running"; toolStartedAt.set(e.payload.toolCallId, e.timestamp); break;
       case "tool_finished": {
         const t = tool(e, e.payload);
         t.status = "succeeded"; t.output = e.payload.output; t.durationMs = e.payload.durationMs; break;

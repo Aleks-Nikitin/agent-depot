@@ -47,6 +47,8 @@ function buildConfig(
     instructions: input.instructions,
     model: "gemini",
     enabledTools: input.enabledTools,
+    requireWriteApproval: input.requireWriteApproval,
+    ...(input.workspaceName ? { workspaceName: input.workspaceName } : {}),
     ...(input.limits ? { limits: input.limits } : {}),
   });
 }
@@ -161,6 +163,8 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     model: "gemini",
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
+    requireWriteApproval: sourceConfig.requireWriteApproval,
+    workspaceName: sourceConfig.workspaceName,
   });
   await db.$transaction(async (tx) => {
     await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
@@ -200,6 +204,8 @@ export async function rollbackAgent(
       model: "gemini",
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
+      requireWriteApproval: targetConfig.requireWriteApproval,
+      workspaceName: targetConfig.workspaceName,
     });
     await tx.agent.update({
       where: { id },
