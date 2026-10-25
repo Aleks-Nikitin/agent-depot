@@ -164,3 +164,30 @@ it("requires a fresh approval for each distinct write in the same model turn", a
   const finished = await resumeAgent({ approvalId: second.payload.approvalId, ownerId: "demo", approved: false }, deps);
   expect(finished.status).toBe("completed"); expect(initial.tools.run).toHaveBeenCalledOnce();
 });
+
+it("persists a complete read-tool trace without a live event listener", async () => {
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: tools.tools, driver: driver([
+      request({ toolId: "knowledge_search", toolCallId: "no-listener", input: { query: "test" } }), answer(),
+    ]),
+  });
+  created.push(result.runId);
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.map(e => e.type)).toEqual([
+    "run_started", "model_started", "model_finished", "tool_requested", "tool_started", "tool_finished",
+    "model_started", "model_finished", "run_completed",
+  ]);
+});
+it("persists denied write events for evaluation runs without a live listener", async () => {
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test", approvalMode: "deny" }, {
+    store, registry: tools.tools, driver: driver([
+      request({ toolId: "create_ticket", toolCallId: "eval-denied", input: { query: "test" } }), answer(),
+    ]),
+  });
+  created.push(result.runId);
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.some(e => e.type === "tool_failed" && e.payload.reason === "write_denied")).toBe(true);
+  expect(tools.run).not.toHaveBeenCalled();
+});

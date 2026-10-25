@@ -29,7 +29,8 @@ export async function runAgent(options: {
     modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
-  await deps.onEvent?.(await deps.store.appendEvent(run.id, options.ownerId, { type: "run_started", payload: { agentId: config.id } }));
+  const started = await deps.store.appendEvent(run.id, options.ownerId, { type: "run_started", payload: { agentId: config.id } });
+  await deps.onEvent?.(started);
   return continueRun(run.id, options.ownerId, deps);
 }
 
@@ -57,7 +58,10 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     ? AbortSignal.any([deps.signal, AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs))])
     : AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs));
   const elapsed = () => { state.activeMs = previousActive + Date.now() - invocationStarted; };
-  const emit = async (event: EventInput) => deps.onEvent?.(await deps.store.appendEvent(runId, ownerId, event));
+  const emit = async (event: EventInput) => {
+    const saved = await deps.store.appendEvent(runId, ownerId, event);
+    await deps.onEvent?.(saved);
+  };
   const save = async () => { elapsed(); version = await deps.store.saveCheckpoint(runId, ownerId, version, state); };
   const finish = async (status: "completed" | "blocked" | "failed", response: string | null, reason: string | null): Promise<AgentRunResult> => {
     elapsed();
