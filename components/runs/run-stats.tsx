@@ -29,6 +29,6 @@ export function RunStats({ run, totals, steps }: { run: RunDetail; totals: Trace
 
 export function ExportJsonButton({ run }: { run: RunDetail }) {
   return (
-    <Button onClick={() => downloadFile(`run-${run.number}.json`, JSON.stringify({ ...run }, null, 2))}>Export JSON</Button>
+    <Button onClick={() => downloadFile(`run-${run.number ?? run.id}.json`, JSON.stringify({ ...run }, null, 2))}>Export JSON</Button>
   );
 }

@@ -18,12 +18,15 @@ export const isFinished = (s: RunStatus) => finishedStatuses.includes(s);
 export const UNKNOWN = "unknown";
 
 /** "#127" for fixture/numbered runs, otherwise a short id. PLACEHOLDER(P12). */
-export function runLabel(runId: string | null, number?: number): string {
+export function runLabel(runId: string | null, number?: number | null): string {
   if (number != null) return `#${number}`;
   if (!runId) return "—";
   const n = runId.match(/^run-(\d+)$/)?.[1];
   return n ? `#${n}` : `#${runId.slice(-6)}`;
 }
+
+/** "v2", or "—" when the version is unknown. */
+export const formatVersion = (version: number | null | undefined) => (version == null ? "—" : `v${version}`);
 
 export function formatClock(iso: string): string {
   return new Date(iso).toISOString().slice(11, 19);

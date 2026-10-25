@@ -11,7 +11,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { AlertIcon, ClockIcon, RefreshIcon } from "@/components/ui/icons";
 import { StatusPill, Tag } from "@/components/ui/pill";
 import { deriveTrace } from "@/lib/playground/reduce-events";
-import { describeReason, formatRelative, runLabel } from "@/lib/runs/format";
+import { describeReason, formatRelative, formatVersion, runLabel } from "@/lib/runs/format";
 import { getRun } from "@/lib/runs/queries";
 
 export const metadata: Metadata = { title: "Run detail · AgentDepot" };
@@ -48,7 +48,7 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
               <StatusPill status={run.status} />
             </div>
             <p className="ad-mono mt-1.5 text-[13px] text-(--ad-muted)">
-              {run.agentName} · v{run.version} · {run.model} · started {formatRelative(run.startedAt, now)}
+              {run.agentName} · {formatVersion(run.version)} · {run.model} · started {formatRelative(run.startedAt, now)}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -96,7 +96,7 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
             <CardHeader title="Run metadata" />
             <dl className="px-5 py-2">
               <Row label="Run ID">{run.id}</Row>
-              <Row label="Agent">{run.agentName} · v{run.version}</Row>
+              <Row label="Agent">{run.agentName} · {formatVersion(run.version)}</Row>
               <Row label="Model">{run.model}</Row>
               <Row label="Started">{new Date(run.startedAt).toISOString().replace("T", " ").slice(0, 19)} UTC</Row>
               <Row label="Stop reason">{trace.stopReason ? describeReason(trace.stopReason) : "—"}</Row>

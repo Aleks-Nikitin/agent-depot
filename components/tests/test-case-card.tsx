@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
-import { ButtonLink } from "@/components/ui/button";
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { AlertIcon, CheckIcon, EditIcon, PlayIcon, SparkIcon, TrashIcon, XIcon } from "@/components/ui/icons";
 import { Chip, Pill } from "@/components/ui/pill";
@@ -23,25 +25,45 @@ export function TestStatusPill({ status }: { status: TestCaseStatus }) {
   }
 }
 
-export function TestCaseCard({ testCase: c, status, result, onDelete }: {
-  testCase: TestCase; status: TestCaseStatus; result?: TestResult; onDelete?: () => void;
+export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, editing }: {
+  testCase: TestCase; status: TestCaseStatus; result?: TestResult; onEdit?: () => void; onDelete?: () => Promise<void> | void; editing?: boolean;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const failing = status === "failed" || status === "error";
   const gatedWrite = c.mustCall.some(t => WRITE_TOOLS.has(t));
+  const remove = async () => {
+    setDeleting(true);
+    try { await onDelete?.(); } finally { setDeleting(false); setConfirming(false); }
+  };
   return (
     <article id={`test-${c.id}`} className={cn("scroll-mt-24 overflow-hidden rounded-xl border bg-(--ad-surface)",
-      failing ? "border-(--ad-error-border)" : "border-(--ad-border)")}>
+      failing ? "border-(--ad-error-border)" : editing ? "border-(--ad-muted)/60" : "border-(--ad-border)")}>
       <div className="p-5">
         <div className="flex items-start gap-3">
           <h3 className="min-w-0 flex-1 text-[15px] font-semibold">&ldquo;{c.input}&rdquo;</h3>
           <TestStatusPill status={status} />
+          {onEdit && (
+            <button type="button" onClick={onEdit} aria-label="Edit test case" aria-pressed={editing}
+              className="grid h-6 w-6 place-items-center rounded-md text-(--ad-muted) hover:bg-(--ad-raised) hover:text-(--ad-text)">
+              <EditIcon size={14} />
+            </button>
+          )}
           {onDelete && (
-            <button type="button" onClick={onDelete} aria-label="Delete test case"
+            <button type="button" onClick={() => setConfirming(true)} aria-label="Delete test case"
               className="grid h-6 w-6 place-items-center rounded-md text-(--ad-muted) hover:bg-(--ad-raised) hover:text-(--ad-error)">
               <TrashIcon size={14} />
             </button>
           )}
         </div>
+        {confirming && (
+          <div role="alertdialog" aria-label="Confirm delete"
+            className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-(--ad-error-border) bg-(--ad-error-bg) px-4 py-3">
+            <p className="flex-1 text-sm text-(--ad-error)">Delete this test case? This can&apos;t be undone.</p>
+            <Button size="sm" variant="ghost" disabled={deleting} onClick={() => setConfirming(false)}>Cancel</Button>
+            <Button size="sm" variant="danger" disabled={deleting} onClick={remove}>{deleting ? "Deleting…" : "Delete"}</Button>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap gap-2">
           {c.mustCall.map(t => <Chip key={`c-${t}`} tone="tool" dot>must call {t}</Chip>)}
           {c.mustNotCall.map(t => <Chip key={`n-${t}`}>must not call {t}</Chip>)}

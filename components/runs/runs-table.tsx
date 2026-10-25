@@ -8,13 +8,13 @@ import { Card } from "@/components/ui/card";
 import { downloadFile } from "@/components/ui/cn";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { StatusPill, Tag, statusStyle } from "@/components/ui/pill";
-import { formatCost, formatDuration, formatRelative, runLabel } from "@/lib/runs/format";
+import { formatCost, formatDuration, formatRelative, formatVersion, runLabel } from "@/lib/runs/format";
 import type { RunSummary } from "@/lib/runs/queries";
 import { emptyFilters, RunsFilters, type RunFilters } from "./runs-filters";
 
 function toCsv(runs: RunSummary[]) {
   const cell = (v: unknown) => `"${String(v ?? "").replaceAll('"', '""')}"`;
-  const rows = runs.map(r => [r.number, r.agentName, `v${r.version}`, r.input, statusStyle[r.status].label, r.durationMs, r.costUsd, r.tokens, r.startedAt]);
+  const rows = runs.map(r => [r.number ?? r.id, r.agentName, formatVersion(r.version), r.input, statusStyle[r.status].label, r.durationMs, r.costUsd, r.tokens, r.startedAt]);
   return [["run", "agent", "version", "input", "status", "duration_ms", "est_cost_usd", "tokens", "started_at"], ...rows].map(r => r.map(cell).join(",")).join("\n");
 }
 
@@ -51,7 +51,7 @@ export function RunsTable({ runs, now }: { runs: RunSummary[]; now: number }) {
                       <Link href={`/runs/${r.id}`} onClick={e => e.stopPropagation()} className="hover:underline">{runLabel(r.id, r.number)}</Link>
                     </td>
                     <td className="ad-mono px-5 py-4 text-[13px]">{r.agentName}</td>
-                    <td className="px-5 py-4"><Tag>v{r.version}</Tag></td>
+                    <td className="px-5 py-4"><Tag>{formatVersion(r.version)}</Tag></td>
                     <td className="max-w-[320px] truncate px-5 py-4" title={r.input}>{r.input}</td>
                     <td className="px-5 py-4"><StatusPill status={r.status} /></td>
                     <td className="ad-mono px-5 py-4 text-right">{formatDuration(r.durationMs)}</td>

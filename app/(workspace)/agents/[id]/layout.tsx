@@ -1,12 +1,11 @@
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import { Suspense } from "react";
-import { AgentHeader, AgentHeaderSkeleton } from "@/components/shell/agent-header";
-import { getFixtureAgent } from "@/lib/fixtures/runs";
+import { AgentHeader, AgentHeaderSkeleton, getAgentHeader } from "@/components/shell/agent-header";
 
 async function Header({ params }: { params: Promise<{ id: string }> }) {
   if (!await pageOwnerOrNull()) return null;
   const { id } = await params;
-  return <AgentHeader agent={getFixtureAgent(decodeURIComponent(id))} />;
+  return <AgentHeader agent={await getAgentHeader(decodeURIComponent(id))} />;
 }
 
 export default function AgentLayout({ children, params }: LayoutProps<"/agents/[id]">) {
