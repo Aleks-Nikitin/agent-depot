@@ -1,10 +1,9 @@
 import { Suspense } from "react";
-import { AgentHeader, AgentHeaderSkeleton } from "@/components/shell/agent-header";
-import { getFixtureAgent } from "@/lib/fixtures/runs";
+import { AgentHeader, AgentHeaderSkeleton, getAgentHeader } from "@/components/shell/agent-header";
 
 async function Header({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <AgentHeader agent={getFixtureAgent(decodeURIComponent(id))} />;
+  return <AgentHeader agent={await getAgentHeader(decodeURIComponent(id))} />;
 }
 
 export default function AgentLayout({ children, params }: LayoutProps<"/agents/[id]">) {

@@ -17,7 +17,8 @@ export type AgentHeaderData = {
   maxModelCalls: number;
 };
 
-export const DEFAULT_AGENT_ID = "acmestore-support";
+/** Agent the nav's Playground / Tests links open: the seeded demo agent that exists in the database. */
+export const DEFAULT_AGENT_ID = "support-demo";
 
 // PLACEHOLDER(P6): read from Dev 1's agent store (Agent.published / publishedVersion, config.limits).
 const agents: Record<string, AgentHeaderData> = {
@@ -32,8 +33,6 @@ export function getFixtureAgent(id: string): AgentHeaderData {
     model: "gemini", toolCount: 0, costCapUsd: 0.05, maxModelCalls: 5 };
 }
 
-// PLACEHOLDER(P4): pass the real tool catalog (lib/agents/library/catalog.ts) from the server instead.
-export const FIXTURE_TOOLS = ["knowledge_search", "sales_lookup", "google_shopping", "google_news", "read_webpage", "send_email"];
 export const WRITE_TOOLS = new Set(["send_email", "create_ticket"]);
 
 /** "Now" for fixture timestamps, so relative times ("4 min ago") are deterministic. */
