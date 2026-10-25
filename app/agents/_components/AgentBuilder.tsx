@@ -20,17 +20,18 @@ type Props = {
   catalog: ToolCatalogEntry[];
   templates: AgentTemplate[];
   initial?: AgentDetail;
+  initialTemplate?: AgentTemplate;
 };
 
 type Tab = "form" | "spec";
 
-export default function AgentBuilder({ mode, catalog, templates, initial }: Props) {
+export default function AgentBuilder({ mode, catalog, templates, initial, initialTemplate }: Props) {
   const router = useRouter();
 
-  const [name, setName] = useState(initial?.name ?? "");
-  const [instructions, setInstructions] = useState(initial?.config.instructions ?? "");
+  const [name, setName] = useState(initial?.name ?? initialTemplate?.name ?? "");
+  const [instructions, setInstructions] = useState(initial?.config.instructions ?? initialTemplate?.instructions ?? "");
   const [tools, setTools] = useState<Set<string>>(
-    new Set(initial?.config.enabledTools ?? []),
+    new Set(initial?.config.enabledTools ?? initialTemplate?.enabledTools ?? []),
   );
   const [tab, setTab] = useState<Tab>("form");
 
@@ -45,7 +46,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AgentDetail | undefined>(initial);
-  const [suggestedTests, setSuggestedTests] = useState<TestCaseInput[]>([]);
+  const [suggestedTests, setSuggestedTests] = useState<TestCaseInput[]>(initialTemplate?.testCases ?? []);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [maxCalls, setMaxCalls] = useState(initial?.config.limits.maxModelCalls ?? 5);
   const [costCap, setCostCap] = useState(initial?.config.limits.maxEstimatedCostUsd ?? 0.05);
@@ -369,10 +370,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
             <h2 className="text-sm font-medium">Publish</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Publishing marks the current version as production-ready.
+              Publishing marks a revision as released after its saved checks pass.
             </p>
             <Link href={`/agents/${detail.id}/tests`} className="mt-3 inline-block text-sm text-sky-300 underline">Run tests and publish this version</Link>
-            <p className="mt-2 text-xs text-zinc-400">Publish checks saved server results. A checkbox cannot approve a release.</p>
+            <p className="mt-2 text-xs text-zinc-400">Publish checks the latest saved results for this version and its current test definitions.</p>
             {detail.published && (
               <p className="mt-2 text-xs text-emerald-300">
                 Published v{detail.publishedVersion}
