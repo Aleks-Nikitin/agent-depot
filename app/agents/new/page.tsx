@@ -3,6 +3,7 @@ import AgentBuilder from "../_components/AgentBuilder";
 import { toolCatalog, agentTemplates, templateByKey } from "@/lib/agents/library/catalog";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/prisma";
+import { WorkspaceShell } from "@/components/shell/workspace-shell";
 
 export default async function NewAgentPage({ searchParams }: PageProps<"/agents/new">) {
   const owner = await pageOwnerOrNull();
@@ -11,15 +12,17 @@ export default async function NewAgentPage({ searchParams }: PageProps<"/agents/
   const query = await searchParams;
   const template = typeof query.template === "string" ? templateByKey(query.template) : undefined;
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      <nav className="mb-4 text-sm text-zinc-400">
-        <Link href="/" className="hover:text-white">
-          Agents
-        </Link>{" "}
-        / New
-      </nav>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">New agent</h1>
-      <AgentBuilder mode="create" catalog={toolCatalog} templates={agentTemplates} initialTemplate={template} workspaceName={workspaceName} githubEnabled={!!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET} />
-    </div>
+    <WorkspaceShell>
+      <div className="mx-auto w-full max-w-5xl px-6 py-8">
+        <nav className="mb-4 text-sm text-(--ad-muted)">
+          <Link href="/" className="hover:text-(--ad-text)">
+            Agents
+          </Link>{" "}
+          / New
+        </nav>
+        <h1 className="mb-6 text-2xl font-semibold tracking-tight">New agent</h1>
+        <AgentBuilder mode="create" catalog={toolCatalog} templates={agentTemplates} initialTemplate={template} workspaceName={workspaceName} githubEnabled={!!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET} />
+      </div>
+    </WorkspaceShell>
   );
 }

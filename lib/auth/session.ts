@@ -33,6 +33,6 @@ export async function pageOwnerOrNull() {
 
 export async function pageOwner() {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) redirect("/auth");
+  if (!ownerId) redirect("/");
   return ownerId;
 }

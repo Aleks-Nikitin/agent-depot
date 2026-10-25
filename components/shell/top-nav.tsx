@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Backlit } from "@/components/ui/backlit";
 import { cn } from "@/components/ui/cn";
 import { AccountMenu } from "@/components/auth/account-menu";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 // Shared navigation for the signed-in workspace.
 export function TopNav() {
@@ -37,7 +38,10 @@ export function TopNav() {
             </Link>
           ))}
         </div>
-        <div className="ml-auto"><AccountMenu /></div>
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <ThemeToggle />
+          <AccountMenu />
+        </div>
       </nav>
     </header>
   );

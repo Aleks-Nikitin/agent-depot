@@ -1,5 +1,10 @@
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { EB_Garamond, JetBrains_Mono } from "next/font/google";
 
-export const inter = Inter({ subsets: ["latin"], variable: "--font-ad-sans" });
+// Editorial look: warm old-style serif for text/headings, monospace for chrome.
+export const serif = EB_Garamond({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  variable: "--font-ad-sans",
+});
 export const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-ad-mono" });
-export const fontVariables = `${inter.variable} ${jetbrainsMono.variable}`;
+export const fontVariables = `${serif.variable} ${jetbrainsMono.variable}`;
