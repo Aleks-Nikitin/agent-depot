@@ -54,7 +54,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
       <p className="mt-2 text-sm text-(--ad-muted)">{isSignIn ? "Sign in to save, run, test, and monitor your agents." : "Create your personal Agent Depot workspace."}</p>
       {error && <p role="alert" className="mt-5 rounded-xl border border-(--ad-error-border) bg-(--ad-error-bg) p-3 text-sm text-(--ad-error)">{error}</p>}
       <button type="button" onClick={github} disabled={!!pending || !githubEnabled}
-        className="mt-6 w-full rounded-xl border border-white/20 px-4 py-3 font-medium hover:bg-(--ad-raised) disabled:cursor-not-allowed disabled:opacity-50">
+        className="mt-6 w-full rounded-xl border border-(--ad-border) px-4 py-3 font-medium hover:bg-(--ad-raised) disabled:cursor-not-allowed disabled:opacity-50">
         {pending === "github" ? "Opening GitHub…" : "Continue with GitHub"}
       </button>
       {!githubEnabled && <p className="mt-2 text-xs text-(--ad-muted)">GitHub sign-in is not configured yet. Email sign-in is available.</p>}
@@ -74,7 +74,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
           <input id="password" name="password" type="password" autoComplete={isSignIn ? "current-password" : "new-password"} required minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} disabled={!!pending} className={inputClass} />
         </label>
         {!isSignIn && <p className="text-xs text-(--ad-muted)">Use at least 8 characters.</p>}
-        <button type="submit" disabled={!!pending} className="w-full rounded-xl bg-(--ad-text) px-4 py-3 font-semibold text-(--ad-bg) hover:bg-sky-200 disabled:opacity-50">
+        <button type="submit" disabled={!!pending} className="w-full rounded-xl bg-(--ad-text) px-4 py-3 font-semibold text-(--ad-bg) hover:opacity-90 disabled:opacity-50">
           {pending === "email" ? (isSignIn ? "Signing in…" : "Creating account…") : (isSignIn ? "Sign in" : "Create account")}
         </button>
       </form>

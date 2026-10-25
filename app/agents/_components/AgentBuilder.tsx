@@ -340,7 +340,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
               <p className="text-xs text-(--ad-muted)">
                 Tickets are created immediately and appear in Tools & knowledge. No external messages are sent. Tests never execute writes.
               </p>
-              {tools.has("send_email") && <p className="mt-2 text-sm text-amber-300">Email has been removed because it did not deliver messages. Saving removes it from this agent. Internal support tickets remain available.</p>}
+              {tools.has("send_email") && <p className="mt-2 text-sm text-(--ad-approval)">Email has been removed because it did not deliver messages. Saving removes it from this agent. Internal support tickets remain available.</p>}
               <div className="mt-2 space-y-2">
                 {catalog.map((tool) => (
                   <label
@@ -362,7 +362,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                       <span className="block text-xs text-(--ad-muted)">
                         {tool.description}
                       </span>
-                      {tool.unavailableReason && <span className="mt-2 block text-xs text-amber-300">{"Not connected: ask the administrator to set SERPAPI_API_KEY for live search."}</span>}
+                      {tool.unavailableReason && <span className="mt-2 block text-xs text-(--ad-approval)">{"Not connected: ask the administrator to set SERPAPI_API_KEY for live search."}</span>}
                       {reasons[tool.id] && (
                         <span className="mt-1 block text-xs text-(--ad-model)">
                           Gemini: {reasons[tool.id]}
