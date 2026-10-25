@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Backlit } from "@/components/ui/backlit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -62,16 +63,21 @@ function TurnReply({ trace, agentName, busy, error, interrupted, selected, onSel
  * Playground screen: owns the conversation and the live run, renders chat on the left and the trace on the right.
  * Each message starts a new run on the same agent; earlier turns keep their final trace so you can reopen it.
  */
-export function PlaygroundScreen({ agent }: { agent: AgentHeaderData }) {
+export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agent: AgentHeaderData; initialRunId?: string; initialMessage?: string }) {
   const run = useRun();
   const [history, setHistory] = useState<Turn[]>([]);
-  const [current, setCurrent] = useState<string | null>(null);
+  const [current, setCurrent] = useState<string | null>(initialMessage ?? null);
   const [viewKey, setViewKey] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const viewing = viewKey ? history.find(t => t.key === viewKey) ?? null : null;
   const shown = viewing?.trace ?? run.trace;
+  const replay = run.replay;
+  useEffect(() => { if (initialRunId) void replay(initialRunId); }, [initialRunId, replay]);
+  useEffect(() => {
+    if (run.trace.runId) window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground?runId=${encodeURIComponent(run.trace.runId)}`);
+  }, [agent.id, run.trace.runId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [history.length, current, run.trace.status]);
 
@@ -81,7 +87,7 @@ export function PlaygroundScreen({ agent }: { agent: AgentHeaderData }) {
     setViewKey(null);
     void run.start(agent.id, message);
   };
-  const newRun = () => { run.reset(); setHistory([]); setCurrent(null); setViewKey(null); };
+  const newRun = () => { run.reset(); setHistory([]); setCurrent(null); setViewKey(null); window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground`); };
 
   return (
     <div className="grid flex-1 gap-5 p-4 sm:p-6 lg:h-[calc(100dvh-125px)] lg:min-h-155 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-[minmax(0,1fr)]">
@@ -124,6 +130,7 @@ export function PlaygroundScreen({ agent }: { agent: AgentHeaderData }) {
             {shown.status && <StatusPill status={shown.status} />}
             {viewing && <span className="ad-mono text-xs text-(--ad-muted)">earlier turn</span>}
             {shown.runId && <TraceTotals totals={shown.totals} />}
+            {shown.runId && <Link href={`/runs/${encodeURIComponent(shown.runId)}`} className="text-xs text-(--ad-model) hover:underline">Saved run</Link>}
             <div className="ml-auto flex gap-2">
               <Button size="sm" variant="secondary" className="ad-mono" onClick={() => setCollapsed(c => !c)} aria-pressed={collapsed}>
                 {collapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />} {collapsed ? "Expand" : "Collapse"}

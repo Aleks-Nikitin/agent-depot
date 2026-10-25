@@ -1,5 +1,5 @@
 import { getDb } from "../../db/prisma";
-import { demoRegistry } from "../../integrations/demo-tools";
+import { runtimeRegistry } from "../../integrations/runtime-tools";
 import { AgentConfigSchema } from "../contracts";
 import { PrismaRunStore } from "../storage/prisma-store";
 import { createGoogleDriver } from "./model";
@@ -12,5 +12,5 @@ export async function loadAgent(id: string, ownerId: string) {
   return config;
 }
 export function runtimeServices() {
-  return { store: new PrismaRunStore(getDb()), registry: demoRegistry, driver: createGoogleDriver() };
+  return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: createGoogleDriver() };
 }

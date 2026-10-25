@@ -77,6 +77,8 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
         </p>
       </div>
 
+      {c.expectedBehavior && <p className="px-5 pb-4 text-sm text-(--ad-muted)">Expected behavior: {c.expectedBehavior}</p>}
+      {!failing && result?.runId && <div className="border-t border-(--ad-border) p-4"><ButtonLink href={`/runs/${result.runId}`} size="sm">View recorded test trace</ButtonLink></div>}
       {failing && result && (
         <div className="border-t border-(--ad-error-border) bg-(--ad-error-bg)/50 p-5">
           <div className="flex items-center justify-between gap-3">

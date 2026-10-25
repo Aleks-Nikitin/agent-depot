@@ -1,3 +1,4 @@
+import { currentOwner, configError } from "@/lib/agents/library/http";
 import { z } from "zod";
 import { listRuns } from "@/lib/runs/queries";
 
@@ -18,8 +19,9 @@ export async function GET(request: Request) {
   const parsed = QuerySchema.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   if (!parsed.success) return Response.json({ error: "invalid_query", issues: parsed.error.issues }, { status: 400 });
   try {
-    return Response.json(await listRuns(parsed.data));
-  } catch {
-    return Response.json({ error: "server_error" }, { status: 500 });
+    const ownerId = await currentOwner(request);
+    return Response.json(await listRuns(ownerId, parsed.data));
+  } catch (error) {
+    return configError(error);
   }
 }

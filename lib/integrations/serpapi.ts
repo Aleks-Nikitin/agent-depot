@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
-const CACHE_DIR = path.join(process.cwd(), "lib/integrations/data/cache");
+const CACHE_DIR = path.join(process.cwd(), ".cache/serpapi");
 
 function cacheKey(engine: string, params: Record<string, string>) {
   const raw = engine + ":" + JSON.stringify(params, Object.keys(params).sort());
@@ -28,7 +28,7 @@ async function writeCache(key: string, data: unknown) {
 
 export async function serpapiSearch(
   engine: string,
-  params: Record<string, string>
+  params: Record<string, string>, signal?: AbortSignal
 ): Promise<{ data: unknown; cached: boolean; source: string }> {
   const key = cacheKey(engine, params);
 
@@ -46,7 +46,7 @@ export async function serpapiSearch(
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const res = await fetch(url, { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`SerpApi ${res.status}`);
     const json = await res.json();
     await writeCache(key, json);

@@ -76,7 +76,7 @@ it("runs two stored configurations through their distinct real demo tools", asyn
     const events = await readEvents(await execute(request({ message: "test" }), { params: Promise.resolve({ id: saved.id }) }));
     expect(events.at(-1)?.type).toBe("run_completed");
     const result = events.find(e => e.type === "tool_finished");
-    expect(result?.payload).toMatchObject({ toolId, output: { source: toolId === "knowledge_search" ? "demo_policy_dataset" : "demo_sales_dataset" } });
+    expect(result?.payload).toMatchObject({ toolId, output: { source: toolId === "knowledge_search" ? "acme_knowledge" : "acme_sales" } });
     const history = await new PrismaRunStore(db).history(events[0].runId, "demo");
     expect(history.events).toEqual(events);
   }

@@ -64,11 +64,12 @@ export function AddTestDialog({ tools, initial, onSubmit, onCancel, inputRef }: 
   const [mustContain, setMustContain] = useState<string[]>(initial?.mustContain ?? []);
   const [word, setWord] = useState("");
   const [useGrader, setUseGrader] = useState(initial?.useGrader ?? false);
+  const [expectedBehavior, setExpectedBehavior] = useState(initial?.expectedBehavior ?? "");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saving, setSaving] = useState(false);
   const editing = !!initial;
 
-  const reset = () => { setInput(""); setMustCall([]); setMustNotCall([]); setMustContain([]); setWord(""); setUseGrader(false); setErrors({}); };
+  const reset = () => { setInput(""); setMustCall([]); setMustNotCall([]); setMustContain([]); setWord(""); setUseGrader(false); setExpectedBehavior(""); setErrors({}); };
   const addWord = () => {
     const w = word.trim();
     if (!w) { setErrors(e => ({ ...e, mustContain: "Phrases can't be empty" })); return; }
@@ -77,7 +78,8 @@ export function AddTestDialog({ tools, initial, onSubmit, onCancel, inputRef }: 
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const parsed = TestCaseInputSchema.safeParse({ input, mustCall, mustNotCall, mustContain, useGrader, source: initial?.source ?? "user" });
+    const parsed = TestCaseInputSchema.safeParse({ input, mustCall, mustNotCall, mustContain, useGrader,
+      ...(expectedBehavior.trim() ? { expectedBehavior: expectedBehavior.trim() } : {}), source: initial?.source ?? "user" });
     if (!parsed.success) { setErrors(fieldErrorsFrom(parsed.error.issues)); return; }
     setSaving(true);
     const serverErrors = await onSubmit(parsed.data);
@@ -122,14 +124,15 @@ export function AddTestDialog({ tools, initial, onSubmit, onCancel, inputRef }: 
             </div>
           )}
         </div>
-        <div className={`${fieldClass} flex items-center justify-between gap-4 py-3`}>
+        <div className={`${fieldClass} flex flex-wrap items-center justify-between gap-4 py-3`}>
           <div>
             <p className="flex items-center gap-2 text-sm font-medium"><SparkIcon size={14} /> Grade with Gemini</p>
             <p className="mt-0.5 text-[13px] text-(--ad-muted)">Checks the answer follows the agent&apos;s policy</p>
           </div>
           <Switch checked={useGrader} onChange={setUseGrader} label="Grade with Gemini" />
+          {useGrader && <label className="mt-3 block text-sm">Expected behavior (optional)<Textarea value={expectedBehavior} onChange={event => setExpectedBehavior(event.target.value)} maxLength={2000} placeholder="Describe what a correct answer should do." className="mt-2" /></label>}
         </div>
-        <FieldError id="test-form-error" message={errors.form ?? errors.source ?? errors.useGrader} />
+        <FieldError id="test-form-error" message={errors.form ?? errors.source ?? errors.useGrader ?? errors.expectedBehavior} />
         <div className="flex items-center justify-end gap-2 border-t border-(--ad-border) pt-4">
           <Button variant="ghost" disabled={saving} onClick={() => { reset(); onCancel?.(); }}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Save test"}</Button>

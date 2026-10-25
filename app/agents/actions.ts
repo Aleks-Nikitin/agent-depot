@@ -1,7 +1,7 @@
 "use server";
 
 import { draftAgent, googleDraftGenerator } from "@/lib/agents/runtime/draft";
-import { demoRegistry } from "@/lib/integrations/demo-tools";
+import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
 import type { AgentDraft } from "@/lib/agents/contracts";
 import { pageOwner } from "@/lib/auth/session";
 
@@ -17,7 +17,7 @@ export async function draftAgentAction(goal: string): Promise<DraftResult> {
   if (!trimmed) return { ok: false, error: "Describe what the agent should do." };
   try {
     const signal = AbortSignal.timeout(30_000);
-    const { draft } = await draftAgent(trimmed, demoRegistry, googleDraftGenerator, signal);
+    const { draft } = await draftAgent(trimmed, runtimeRegistry, googleDraftGenerator, signal);
     return { ok: true, draft };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "draft_failed";

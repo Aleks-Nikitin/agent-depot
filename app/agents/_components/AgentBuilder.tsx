@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { TestCaseInputSchema, type TestCaseInput } from "@/lib/evals/schema";
 import { useRouter } from "next/navigation";
 import type { ToolCatalogEntry, AgentTemplate } from "@/lib/agents/library/catalog";
 import type { AgentDetail } from "@/lib/agents/library/store";
@@ -10,7 +12,7 @@ import {
   createAgent,
   updateAgent,
   rollbackAgent,
-  publishAgent,
+  evaluateSavedAgent,
 } from "./api";
 
 type Props = {
@@ -18,17 +20,18 @@ type Props = {
   catalog: ToolCatalogEntry[];
   templates: AgentTemplate[];
   initial?: AgentDetail;
+  initialTemplate?: AgentTemplate;
 };
 
 type Tab = "form" | "spec";
 
-export default function AgentBuilder({ mode, catalog, templates, initial }: Props) {
+export default function AgentBuilder({ mode, catalog, templates, initial, initialTemplate }: Props) {
   const router = useRouter();
 
-  const [name, setName] = useState(initial?.name ?? "");
-  const [instructions, setInstructions] = useState(initial?.config.instructions ?? "");
+  const [name, setName] = useState(initial?.name ?? initialTemplate?.name ?? "");
+  const [instructions, setInstructions] = useState(initial?.config.instructions ?? initialTemplate?.instructions ?? "");
   const [tools, setTools] = useState<Set<string>>(
-    new Set(initial?.config.enabledTools ?? []),
+    new Set(initial?.config.enabledTools ?? initialTemplate?.enabledTools ?? []),
   );
   const [tab, setTab] = useState<Tab>("form");
 
@@ -43,7 +46,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AgentDetail | undefined>(initial);
-  const [testsPassed, setTestsPassed] = useState(false);
+  const [suggestedTests, setSuggestedTests] = useState<TestCaseInput[]>(initialTemplate?.testCases ?? []);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [maxCalls, setMaxCalls] = useState(initial?.config.limits.maxModelCalls ?? 5);
+  const [costCap, setCostCap] = useState(initial?.config.limits.maxEstimatedCostUsd ?? 0.05);
   const [working, setWorking] = useState(false);
 
   const toggleTool = (id: string) => {
@@ -61,6 +67,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
     setTools(new Set(template.enabledTools));
     setAssumptions([]);
     setReasons({});
+    setSuggestedTests(template.testCases ?? []);
   };
 
   const runDraft = () => {
@@ -76,6 +83,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
       setInstructions(draft.instructions);
       setTools(new Set(draft.tools.map((t) => t.id)));
       setAssumptions(draft.assumptions);
+      setSuggestedTests(draft.suggestedTests.map(test => TestCaseInputSchema.parse({ ...test, useGrader: true, source: "gemini" })));
       setReasons(Object.fromEntries(draft.tools.map((t) => [t.id, t.reason])));
     });
   };
@@ -86,8 +94,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
       instructions: instructions.trim(),
       model: "gemini" as const,
       enabledTools: [...tools],
+      limits: { ...initial?.config.limits, maxModelCalls: maxCalls, maxEstimatedCostUsd: costCap },
+      ...(mode === "create" && suggestedTests.length ? { testCases: suggestedTests } : {}),
     }),
-    [name, instructions, tools],
+    [name, instructions, tools, maxCalls, costCap, mode, suggestedTests, initial],
   );
 
   const specYaml = useMemo(
@@ -98,24 +108,24 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
         instructions: input.instructions || "(empty)",
         enabledTools: input.enabledTools,
         requireWriteApproval: true,
+        limits: input.limits,
       }),
     [input],
   );
 
-  const canSave = input.name.length > 0 && input.instructions.length > 0;
+  const canSave = input.name.length > 0 && input.instructions.length > 0 && maxCalls >= 1 && maxCalls <= 10 && costCap > 0 && costCap <= 1;
 
   const save = async () => {
     setSaveError(null);
     setSaving(true);
     try {
-      if (mode === "create") {
-        const created = await createAgent(input);
-        router.push(`/agents/${created.id}`);
-      } else if (detail) {
-        const updated = await updateAgent(detail.id, input);
-        setDetail(updated);
-        router.refresh();
-      }
+      const saved = mode === "create" ? await createAgent(input) : detail ? await updateAgent(detail.id, input) : null;
+      if (!saved) return;
+      setDetail(saved); setSaveNotice(`Saved v${saved.version}. Checking saved tests…`);
+      try { const ran = await evaluateSavedAgent(saved.id); setSaveNotice(ran ? `Saved v${saved.version}; results are available in Tests.` : `Saved v${saved.version}. Add test cases before publishing.`); }
+      catch { setSaveNotice(`Saved v${saved.version}. Automatic tests were unavailable; open Tests to retry.`); }
+      if (mode === "create") router.push(`/agents/${saved.id}`);
+      else router.refresh();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed.");
     } finally {
@@ -132,29 +142,23 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
       setName(updated.name);
       setInstructions(updated.config.instructions);
       setTools(new Set(updated.config.enabledTools));
+      setMaxCalls(updated.config.limits.maxModelCalls);
+      setCostCap(updated.config.limits.maxEstimatedCostUsd);
+      try { await evaluateSavedAgent(updated.id); } catch { setSaveNotice("Version restored. Open Tests to retry evaluation."); }
       router.refresh();
+    } catch {
+      setSaveError("Could not restore this version.");
     } finally {
       setWorking(false);
     }
   };
 
-  const onPublish = async () => {
-    if (!detail) return;
-    setWorking(true);
-    try {
-      const updated = await publishAgent(detail.id, testsPassed);
-      setDetail(updated);
-      router.refresh();
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Publish failed.");
-    } finally {
-      setWorking(false);
-    }
-  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <div>
+        {saveNotice && <p role="status" className="mb-4 rounded-lg border border-sky-400/30 bg-sky-400/10 p-3 text-sm">{saveNotice}</p>}
+        {mode === "create" && suggestedTests.length > 0 && <p className="mb-4 text-sm text-sky-300">{suggestedTests.length} suggested tests will be saved and run with this agent. Review them in Tests.</p>}
         {/* Draft with Gemini */}
         <section className="mb-6 rounded-lg border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-sky-500/5 p-4">
           <label className="text-sm font-medium">✨ Draft with Gemini</label>
@@ -257,6 +261,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
               </div>
             </div>
 
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-sm">Model step limit<input type="number" min={1} max={10} value={maxCalls} onChange={event => setMaxCalls(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
+              <label className="text-sm">Estimated model cost cap (USD)<input type="number" min={0.001} max={1} step={0.001} value={costCap} onChange={event => setCostCap(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
+            </div>
             <div>
               <label className="text-sm font-medium">Tools</label>
               <p className="text-xs text-zinc-500">
@@ -362,23 +370,10 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
             <h2 className="text-sm font-medium">Publish</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Publishing marks the current version as production-ready.
+              Publishing marks a revision as released after its saved checks pass.
             </p>
-            <label className="mt-3 flex items-center gap-2 text-xs text-zinc-300">
-              <input
-                type="checkbox"
-                checked={testsPassed}
-                onChange={(e) => setTestsPassed(e.target.checked)}
-              />
-              Tests passed (wired to Dev 3&apos;s suite)
-            </label>
-            <button
-              onClick={onPublish}
-              disabled={!testsPassed || working}
-              className="mt-3 w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
-            >
-              {detail.published ? `Republish v${detail.version}` : "Publish"}
-            </button>
+            <Link href={`/agents/${detail.id}/tests`} className="mt-3 inline-block text-sm text-sky-300 underline">Run tests and publish this version</Link>
+            <p className="mt-2 text-xs text-zinc-400">Publish checks the latest saved results for this version and its current test definitions.</p>
             {detail.published && (
               <p className="mt-2 text-xs text-emerald-300">
                 Published v{detail.publishedVersion}

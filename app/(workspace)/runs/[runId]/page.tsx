@@ -26,13 +26,13 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 async function RunDetailContent({ params }: { params: Promise<{ runId: string }> }) {
-  if (!await pageOwnerOrNull()) return null;
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return null;
   const { runId } = await params;
-  const found = await getRun(decodeURIComponent(runId));
+  const found = await getRun(ownerId, decodeURIComponent(runId));
   if (!found) notFound();
   const { run, now } = found;
   const trace = deriveTrace(run.events);
-  const steps = trace.totals.modelCalls + trace.totals.toolCalls;
   const words = run.input.trim().split(/\s+/).length;
 
   return (
@@ -53,12 +53,13 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
           </div>
           <div className="flex flex-wrap gap-3">
             <ButtonLink href={`/agents/${run.agentId}/playground`}><RefreshIcon size={14} /> Re-run</ButtonLink>
+            <ButtonLink href={`/agents/${run.agentId}/playground?runId=${encodeURIComponent(run.id)}`}>{run.status === "waiting_approval" ? "Review approval" : "Open saved run"}</ButtonLink>
             <ExportJsonButton run={run} />
           </div>
         </div>
       </div>
 
-      <RunStats run={run} totals={trace.totals} steps={steps} />
+      <RunStats run={run} totals={trace.totals} />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-5">

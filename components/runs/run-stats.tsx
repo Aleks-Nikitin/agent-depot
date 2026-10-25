@@ -7,8 +7,8 @@ import type { TraceTotals } from "@/lib/playground/reduce-events";
 import { formatCost, formatDuration, UNKNOWN } from "@/lib/runs/format";
 import { MetricCard } from "./metric-cards";
 
-/** The five stat cards on run detail: duration, tokens, cost, steps, errors. */
-export function RunStats({ run, totals, steps }: { run: RunDetail; totals: TraceTotals; steps: number }) {
+/** The five stat cards on run detail: duration, tokens, cost, model calls, errors. */
+export function RunStats({ run, totals }: { run: RunDetail; totals: TraceTotals }) {
   const u = run.usage;
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
@@ -18,7 +18,7 @@ export function RunStats({ run, totals, steps }: { run: RunDetail; totals: Trace
           ? <span className="ad-mono">{u.inputTokens.toLocaleString("en-US")} in · {u.outputTokens.toLocaleString("en-US")} out</span>
           : "Per-direction split unknown"} />
       <MetricCard label="Est. cost" value={formatCost(totals.costUsd)} caption="Estimated model cost" />
-      <MetricCard label="Steps" value={<>{steps}<span className="text-(--ad-muted)"> / {run.maxModelCalls}</span></>}
+      <MetricCard label="Model calls" value={<>{totals.modelCalls}<span className="text-(--ad-muted)"> / {run.maxModelCalls}</span></>}
         caption={`${totals.modelCalls} model · ${totals.toolCalls} tool calls`} />
       <MetricCard label="Errors" value={totals.errors} valueClassName={totals.errors ? "text-(--ad-error)" : undefined}
         caption={totals.errors ? (run.status === "completed" ? "Recovered, run succeeded" : "See the red steps") : "No errors"}

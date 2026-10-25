@@ -8,6 +8,8 @@ import { GET as read, PUT as update, DELETE as remove } from "../../app/api/agen
 import { POST as execute } from "../../app/api/agents/[id]/run/route";
 import { POST as approve } from "../../app/api/approvals/[id]/route";
 import { GET as metrics } from "../../app/api/runtime/metrics/route";
+import { GET as history } from "../../app/api/runs/[id]/route";
+import { GET as runs } from "../../app/api/runs/route";
 
 const db = getDb();
 const prefix = `auth-${randomUUID()}`;
@@ -122,6 +124,16 @@ it("uses the real session for execution, approval ownership and metrics without 
   const path = `/api/runtime/metrics?from=${from.toISOString()}&to=${to.toISOString()}&agentId=${agentId}`;
   expect((await (await metrics(request(path, "GET", undefined, users[0].cookie))).json()).buckets[0].runs).toBe(1);
   expect((await (await metrics(request(path, "GET", undefined, users[1].cookie))).json()).buckets).toEqual([]);
+  const historyContext = { params: Promise.resolve({ id: waiting[0].runId }) };
+  const replay = await history(request(`/api/runs/${waiting[0].runId}?after=0`, "GET", undefined, users[0].cookie), historyContext);
+  expect(replay.status).toBe(200);
+  const trace = await replay.json();
+  expect(trace.runId).toBe(waiting[0].runId);
+  expect(trace.events.at(-1).type).toBe("run_completed");
+  expect(trace).not.toHaveProperty("checkpoint");
+  expect((await history(request(`/api/runs/${waiting[0].runId}?after=0`, "GET", undefined, users[1].cookie), historyContext)).status).toBe(404);
+  const page = await runs(request(`/api/runs?agentId=${agentId}`, "GET", undefined, users[0].cookie));
+  expect(page.status).toBe(200); expect((await page.json()).runs).toHaveLength(1);
 });
 
 it("starts GitHub OAuth with the configured local callback and rejects forged callback state", async () => {

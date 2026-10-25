@@ -19,7 +19,18 @@ function toCsv(runs: RunSummary[]) {
 }
 
 /** Filter bar + history table. Filtering is client-side over the loaded page of runs. */
-export function RunsTable({ runs, now }: { runs: RunSummary[]; now: number }) {
+export function RunsTable({ runs: initialRuns, now, nextCursor: initialCursor }: { runs: RunSummary[]; now: number; nextCursor?: string | null }) {
+  const [runs, setRuns] = useState(initialRuns);
+  const [nextCursor, setNextCursor] = useState(initialCursor ?? null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  async function loadMore() {
+    setLoading(true); setLoadError(null);
+    try { const response = await fetch(`/api/runs?cursor=${encodeURIComponent(nextCursor!)}&limit=50`, { cache: "no-store" });
+      if (!response.ok) throw new Error(); const page = await response.json();
+      setRuns(previous => [...previous, ...page.runs]); setNextCursor(page.nextCursor);
+    } catch { setLoadError("Could not load older runs."); } finally { setLoading(false); }
+  }
   const router = useRouter();
   const [filters, setFilters] = useState<RunFilters>(emptyFilters);
   const agents = useMemo(() => [...new Map(runs.map(r => [r.agentId, { id: r.agentId, name: r.agentName }])).values()], [runs]);
@@ -32,6 +43,9 @@ export function RunsTable({ runs, now }: { runs: RunSummary[]; now: number }) {
   return (
     <div className="space-y-5">
       <RunsFilters value={filters} onChange={setFilters} agents={agents} onExport={() => downloadFile("runs.csv", toCsv(shown), "text/csv")} />
+      <p className="text-xs text-(--ad-muted)">Showing {runs.length} loaded runs. Filters apply to loaded history.</p>
+      {nextCursor && <button type="button" onClick={loadMore} disabled={loading} className="rounded-lg border border-(--ad-border) px-4 py-2 text-sm">{loading ? "Loading…" : "Load older runs"}</button>}
+      {loadError && <p role="alert" className="text-sm text-(--ad-error)">{loadError}</p>}
       <Backlit edge="top-right">
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">

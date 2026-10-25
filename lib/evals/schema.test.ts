@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { demoTools } from "@/lib/integrations/demo-tools";
+import { runtimeTools } from "@/lib/integrations/runtime-tools";
 import { TOOL_IDS, TestCaseInputSchema } from "./schema";
 
 const messages = (input: unknown) => {
@@ -37,6 +37,6 @@ describe("TestCaseInputSchema", () => {
   });
 
   it("covers every tool registered in the runtime", () => {
-    for (const tool of demoTools) expect(TOOL_IDS).toContain(tool.id);
+    for (const tool of runtimeTools) expect(TOOL_IDS).toContain(tool.id);
   });
 });

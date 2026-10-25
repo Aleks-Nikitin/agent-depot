@@ -59,3 +59,14 @@ export function publishAgent(id: string, testsPassed: boolean): Promise<AgentDet
     body: JSON.stringify({ testsPassed }),
   }).then((res) => parse<AgentDetail>(res));
 }
+
+/** Called after a saved revision; suites run only when the agent has saved tests. */
+export async function evaluateSavedAgent(id: string): Promise<boolean> {
+  const response = await fetch(`/api/agents/${encodeURIComponent(id)}/tests`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Could not load saved tests");
+  const { testCases } = await response.json();
+  if (!testCases.length) return false;
+  const run = await fetch(`/api/agents/${encodeURIComponent(id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  if (!run.ok) throw new Error("Automatic test run unavailable. Open Tests to retry.");
+  return true;
+}

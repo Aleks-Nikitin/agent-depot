@@ -7,8 +7,8 @@ import { createHttpRunClient } from "./http-client";
 import { createMockRunClient } from "./mock-client";
 import { addEvents, emptyTrace, type Trace } from "./reduce-events";
 
-// PLACEHOLDER(P5): flip to "http" once the proxy routes (P3) exist. Nothing else changes.
-export const CLIENT_MODE = "mock" as "mock" | "http";
+// Production UI always uses the authenticated runtime. Mocks are explicit test fixtures only.
+export const CLIENT_MODE = "http" as "mock" | "http";
 
 export function defaultRunClient(): RunClient {
   return CLIENT_MODE === "mock" ? createMockRunClient() : createHttpRunClient();

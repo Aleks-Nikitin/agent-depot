@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LimitsSchema } from "@/lib/agents/contracts";
+import { TestCaseInputSchema } from "@/lib/evals/schema";
 
 // What the builder form submits. Server owns id / ownerId / version.
 export const AgentInputSchema = z
@@ -9,6 +10,7 @@ export const AgentInputSchema = z
     model: z.literal("gemini").default("gemini"),
     enabledTools: z.array(z.string().min(1).max(100)).max(10).default([]),
     limits: LimitsSchema.partial().optional(),
+    testCases: z.array(TestCaseInputSchema).max(5).optional(),
   })
   .strict();
 export type AgentInput = z.infer<typeof AgentInputSchema>;
@@ -18,5 +20,5 @@ export const RollbackRequestSchema = z
   .strict();
 
 export const PublishRequestSchema = z
-  .object({ testsPassed: z.boolean() })
+  .object({ testsPassed: z.boolean().optional() })
   .strict();

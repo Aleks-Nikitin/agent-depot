@@ -13,7 +13,7 @@ export type Tool = {
   description: string;
   input: z.ZodTypeAny;
   kind: "read" | "write";
-  run: (args: unknown) => Promise<unknown>;
+  run: (args: unknown, context?: { signal: AbortSignal }) => Promise<unknown>;
 };
 
 export type KnowledgeDoc = { id: string; title: string; text: string };

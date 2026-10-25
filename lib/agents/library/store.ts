@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
 import { AgentConfigSchema, type AgentConfig } from "@/lib/agents/contracts";
 import { AgentInputSchema, type AgentInput } from "./schema";
+import { readPublishStatus } from "@/lib/evals/publish-gate";
 
 export type AgentSummary = {
   id: string;
@@ -117,6 +118,7 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
     await tx.agentVersion.create({
       data: { agentId: id, version: 1, name: input.name, config },
     });
+    if (input.testCases?.length) await tx.testCase.createMany({ data: input.testCases.map(test => ({ ...test, agentId: id })) });
   });
   return getAgent(ownerId, id);
 }
@@ -129,6 +131,8 @@ export async function updateAgent(
   const input = AgentInputSchema.parse(raw);
   const db = getDb();
   await db.$transaction(async (tx) => {
+    const locked = await tx.agent.updateMany({ where: { id, ownerId }, data: { testRevision: { increment: 0 } } });
+    if (locked.count !== 1) throw new Error("agent_not_found");
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
@@ -150,7 +154,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
   if (!source) throw new Error("agent_not_found");
   const sourceConfig = AgentConfigSchema.parse(source.config);
   const newId = randomUUID();
-  const name = `${source.name} (copy)`;
+  const name = `${source.name.slice(0, 93)} (copy)`;
   const config = buildConfig(newId, ownerId, 1, {
     name,
     instructions: sourceConfig.instructions,
@@ -163,6 +167,10 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     await tx.agentVersion.create({
       data: { agentId: newId, version: 1, name, config },
     });
+    const cases = await tx.testCase.findMany({ where: { agentId: id }, take: 5, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    if (cases.length) await tx.testCase.createMany({ data: cases.map(test => ({ agentId: newId, input: test.input,
+      mustCall: test.mustCall, mustNotCall: test.mustNotCall, mustContain: test.mustContain, useGrader: test.useGrader,
+      expectedBehavior: test.expectedBehavior, source: test.source })) });
   });
   return getAgent(ownerId, newId);
 }
@@ -174,6 +182,8 @@ export async function rollbackAgent(
 ): Promise<AgentDetail> {
   const db = getDb();
   await db.$transaction(async (tx) => {
+    const locked = await tx.agent.updateMany({ where: { id, ownerId }, data: { testRevision: { increment: 0 } } });
+    if (locked.count !== 1) throw new Error("agent_not_found");
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
     const target = await tx.agentVersion.findUnique({
@@ -205,15 +215,16 @@ export async function rollbackAgent(
 export async function publishAgent(
   ownerId: string,
   id: string,
-  testsPassed: boolean,
+  testsPassed?: boolean,
 ): Promise<AgentDetail> {
-  if (!testsPassed) throw new Error("tests_not_passed");
+  void testsPassed; // Legacy clients may send this; only stored server evidence is trusted.
   const db = getDb();
-  const current = await db.agent.findFirst({ where: { id, ownerId } });
-  if (!current) throw new Error("agent_not_found");
-  await db.agent.update({
-    where: { id },
-    data: { published: true, publishedVersion: current.version },
+  await db.$transaction(async tx => {
+    const locked = await tx.agent.updateMany({ where: { id, ownerId }, data: { testRevision: { increment: 0 } } });
+    if (locked.count !== 1) throw new Error("agent_not_found");
+    const status = await readPublishStatus(tx, ownerId, id);
+    if (!status.canPublish) throw new Error("tests_not_passed");
+    await tx.agent.update({ where: { id }, data: { published: true, publishedVersion: status.agentVersion } });
   });
   return getAgent(ownerId, id);
 }

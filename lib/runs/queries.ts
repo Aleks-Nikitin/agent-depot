@@ -1,6 +1,5 @@
 import { io } from "next/cache";
 import { RunStepSchema, type RunStep, type Usage } from "@/lib/agents/contracts";
-import { currentOwner } from "@/lib/agents/library/http";
 import { getDb } from "@/lib/db/prisma";
 import { FIXTURE_NOW, fixtureRuns } from "@/lib/fixtures/runs";
 import { deriveTrace } from "@/lib/playground/reduce-events";
@@ -131,12 +130,12 @@ function dbStatusFor(status: RunStatus): DbStatus | null {
   return status;
 }
 
-async function agentNames(ids: string[]): Promise<Map<string, string>> {
-  const agents = await getDb().agent.findMany({ where: { id: { in: ids }, ownerId: currentOwner() }, select: { id: true, name: true } });
+async function agentNames(ownerId: string, ids: string[]): Promise<Map<string, string>> {
+  const agents = await getDb().agent.findMany({ where: { id: { in: ids }, ownerId }, select: { id: true, name: true } });
   return new Map(agents.map(a => [a.id, a.name]));
 }
 
-export async function listRuns({ agentId, status, source = "playground", limit = 50, cursor }: ListRunsOptions = {}): Promise<RunList> {
+export async function listRuns(ownerId: string, { agentId, status, source = "playground", limit = 50, cursor }: ListRunsOptions = {}): Promise<RunList> {
   if (RUNS_SOURCE === "fixtures") {
     const runs = fixtureRuns.map(toSummary).filter(r => (!agentId || r.agentId === agentId) && (!status || r.status === status));
     return { runs: runs.slice(0, limit), now: FIXTURE_NOW, nextCursor: null };
@@ -147,7 +146,7 @@ export async function listRuns({ agentId, status, source = "playground", limit =
   const db = getDb();
   const dbStatus = status ? dbStatusFor(status) : null;
   const rows = await db.agentRun.findMany({
-    where: { ownerId: currentOwner(), source, ...(agentId ? { agentId } : {}), ...(dbStatus ? { status: dbStatus } : {}) },
+    where: { ownerId, source, ...(agentId ? { agentId } : {}), ...(dbStatus ? { status: dbStatus } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -157,7 +156,7 @@ export async function listRuns({ agentId, status, source = "playground", limit =
   const ids = page.map(r => r.id);
   const [events, names] = await Promise.all([
     db.runEvent.findMany({ where: { runId: { in: ids } }, orderBy: [{ runId: "asc" }, { sequence: "asc" }] }),
-    agentNames([...new Set(page.map(r => r.agentId))]),
+    agentNames(ownerId, [...new Set(page.map(r => r.agentId))]),
   ]);
   const byRun = Map.groupBy(events, e => e.runId);
   const runs = page.map(r => toSummary(toRunDetail(r, byRun.get(r.id) ?? [], names.get(r.agentId) ?? null)))
@@ -166,23 +165,23 @@ export async function listRuns({ agentId, status, source = "playground", limit =
   return { runs, now: Date.now(), nextCursor: rows.length > limit ? page[page.length - 1].id : null };
 }
 
-export async function getRun(id: string): Promise<{ run: RunDetail; now: number } | null> {
+export async function getRun(ownerId: string, id: string): Promise<{ run: RunDetail; now: number } | null> {
   if (RUNS_SOURCE === "fixtures") {
     const run = fixtureRuns.find(r => r.id === id || String(r.number) === id);
     return run ? { run, now: FIXTURE_NOW } : null;
   }
   await io();
   const row = await getDb().agentRun.findFirst({
-    where: { id, ownerId: currentOwner() },
+    where: { id, ownerId },
     select: { ...runSelect, events: { orderBy: { sequence: "asc" } },
       approvals: { select: { id: true, toolCallId: true, toolId: true, status: true, expiresAt: true, decidedAt: true } } },
   });
   if (!row) return null;
-  const names = await agentNames([row.agentId]);
+  const names = await agentNames(ownerId, [row.agentId]);
   return { run: toRunDetail(row, row.events, names.get(row.agentId) ?? null, row.approvals), now: Date.now() };
 }
 
-export async function getRunMetrics({ agentId }: { agentId?: string } = {}): Promise<RunMetrics> {
-  const { runs } = await listRuns({ agentId, limit: 100 });
+export async function getRunMetrics(ownerId: string, { agentId }: { agentId?: string } = {}): Promise<RunMetrics> {
+  const { runs } = await listRuns(ownerId, { agentId, limit: 100 });
   return computeMetrics(runs);
 }

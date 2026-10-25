@@ -1,6 +1,6 @@
 # Agent Depot / AgentForge
 
-Next.js agent platform with Prisma ORM and PostgreSQL. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
+Next.js agent platform with Prisma ORM and PostgreSQL. The [Application integration guide](docs/integration-README.md) covers the connected builder, tools, live playground, tests, publishing, versions and dashboard. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
 
 See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. Signed-out visitors receive a login/signup popup before any agent, run, playground or test content is shown. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
 
@@ -73,8 +73,8 @@ Optional Tiger Data time-series analytics use the same PostgreSQL/Prisma stack. 
 
 See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
 
-The runtime engine and session authentication are implemented and verified locally. The merged playground, run-history and tests screens still use fixtures; their live data wiring remains integration work. The runtime documentation tracks the current checks and remaining integration gates. Hosted Tiger Cloud metric writes/reads remain unverified because external connections time out before TLS.
+The builder, six integration tools, live playground/approvals, saved history, Evaluation Lab, Versions and Tools & Knowledge screens are connected to the owner-scoped backend. Publishing requires current server-side passing test evidence. Starter templates include three checks; the builder requests tests after save/restore when cases exist. See the integration guide for limits and verification. Hosted Tiger Cloud metric writes/reads remain unverified because external connections time out before TLS.
 
 `npm run typecheck` regenerates Next.js route types before checking TypeScript, so new pages/layouts pulled from teammates are included without running a full build first.
 
-`npm run dev` and `npm run build` retain Next.js's default **Turbopack**. This environment's Turbopack CSS worker currently cannot bind its internal port; the recorded webpack command is a verification fallback only, not a change to the project's stack or scripts.
+`npm run dev` and `npm run build` retain Next.js's default **Turbopack**. Restart the dev server after regenerating Prisma. If a previously malformed package file causes a stale build error, stop the server and clear/preserve its generated `.next` cache before restarting.

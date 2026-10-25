@@ -75,6 +75,7 @@ type RequestResult = { ok: true; data: unknown } | { ok: false; errors: FieldErr
 
 const apiErrors: Record<string, string> = {
   agent_not_found: "This agent no longer exists.",
+  test_case_limit: "An agent can have up to five saved test cases.",
   test_not_found: "This test case no longer exists. Refresh the page.",
 };
 
@@ -131,24 +132,29 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   }), [cases, results, running, filter]);
 
   const runTests = async () => {
-    setBusy(true); setResults({}); setDismissed(false); setNotice(null);
-    const r = await simulateTestRun(version, cases, u => {
-      if (u.status === "running") setRunning(u.testCaseId);
-      else { setRunning(null); setResults(prev => ({ ...prev, [u.testCaseId]: u })); }
-    });
-    setMeta(r); setClock(Date.now()); setBusy(false);
-    // PLACEHOLDER: the real runner (POST /api/agents/[id]/tests/run) will save a TestRun; until then nothing is saved.
-    if (persist) setNotice("Simulated run with fixture results: nothing was saved, so Publish still follows the last saved test run.");
+    setBusy(true); setResults({}); setDismissed(false); setNotice(null); setActionError(null);
+    try {
+      let report: TestRunReport;
+      if (persist) {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!response.ok) { const error = await response.json(); throw new Error(error.error ?? "evaluation_failed"); }
+        report = await response.json();
+      } else report = await simulateTestRun(version, cases, () => {});
+      setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
+      setMeta(report); setClock(Date.now());
+      if (persist) { setNotice("Test results saved for this agent version. Write tools were automatically denied."); router.refresh(); }
+    } catch (error) { setActionError(error instanceof Error ? error.message.replaceAll("_", " ") : "Could not run tests."); }
+    finally { setRunning(null); setBusy(false); }
   };
 
-  /** Calls Dev 1's existing publish route; the button is only enabled when the server gate allows it. */
+  /** Calls the existing publish route; the button is only enabled when the server gate allows it. */
   const publishNow = async () => {
     setNotice(null); setActionError(null);
     if (!persist) { setNotice(`All tests pass. Publishing v${version} is not connected in fixture mode.`); return; }
     setPublishing(true);
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/publish`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ testsPassed: true }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error(String(res.status));
       setNotice(`Published v${version}.`);
@@ -179,6 +185,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
       setCases(cs => editing ? cs.map(c => c.id === saved.id ? saved : c) : [...cs, saved]);
     }
     if (editing) { forgetResult(editing.id); setEditing(null); }
+    if (persist) router.refresh();
     return null;
   };
   const deleteCase = async (id: string) => {
@@ -190,6 +197,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
     setCases(cs => cs.filter(c => c.id !== id));
     forgetResult(id);
     if (editing?.id === id) setEditing(null);
+    if (persist) router.refresh();
   };
 
   return (

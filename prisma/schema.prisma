@@ -92,6 +92,7 @@ model Agent {
   config           Json
   published        Boolean        @default(false)
   publishedVersion Int?
+  testRevision     Int            @default(0)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   versions         AgentVersion[]
@@ -132,6 +133,7 @@ model AgentRun {
   events         RunEvent[]
   approvals      Approval[]
   metrics        RuntimeMetric[]
+  recordedEmails RecordedEmail[]
 
   @@index([ownerId, createdAt])
   @@index([agentId, createdAt])
@@ -196,6 +198,32 @@ model DemoTicket {
   createdAt      DateTime @default(now())
 }
 
+model KnowledgeDocument {
+  id        String   @id @default(uuid())
+  ownerId   String
+  title     String
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, createdAt])
+}
+
+model RecordedEmail {
+  id             String   @id @default(uuid())
+  ownerId        String
+  runId          String
+  toolCallId     String
+  idempotencyKey String   @unique
+  to             String
+  subject        String
+  body           String
+  createdAt      DateTime @default(now())
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+}
+
 // NEW
 model TestCase {
   id          String   @id @default(uuid())
@@ -205,6 +233,7 @@ model TestCase {
   mustNotCall String[]
   mustContain String[]
   useGrader   Boolean  @default(false)
+  expectedBehavior String?
   source      String   @default("user") // "gemini" | "template" | "user"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -222,6 +251,9 @@ model TestRun {
   passed       Boolean
   passedCount  Int
   totalCount   Int
+  testsFingerprint String?
+  status       String   @default("completed")
+  finishedAt   DateTime?
   createdAt    DateTime @default(now())
 
   @@index([agentId, agentVersion, createdAt])

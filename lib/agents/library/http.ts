@@ -4,7 +4,7 @@ import { HttpError } from "@/lib/auth/errors";
 
 export const currentOwner = requestOwner;
 
-const NOT_FOUND = new Set(["agent_not_found", "version_not_found"]);
+const NOT_FOUND = new Set(["agent_not_found", "version_not_found", "run_not_found"]);
 const CONFLICT = new Set(["tests_not_passed"]);
 
 export function configError(error: unknown): Response {

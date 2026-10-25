@@ -49,14 +49,14 @@ it.each([
   expect(await gradeAnswer(input)).toEqual({ followsPolicy: false, reason: "grader unavailable", unavailable: true, cause });
 });
 
-it("retries once after a transient provider error", async () => {
+it("does not retry a paid grading call automatically", async () => {
   configure();
   const fetch = vi.fn()
     .mockResolvedValueOnce(overloaded())
     .mockResolvedValueOnce(providerResponse(JSON.stringify({ followsPolicy: false, reason: "Invents a guarantee." })));
   vi.stubGlobal("fetch", fetch);
-  expect(await gradeAnswer(input)).toEqual({ followsPolicy: false, reason: "Invents a guarantee." });
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(await gradeAnswer(input)).toMatchObject({ unavailable: true, cause: "provider_http_503" });
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 it("marks the grade unavailable when the call times out", async () => {

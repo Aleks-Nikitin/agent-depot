@@ -1,4 +1,4 @@
-export const shoppingFixtures: Record<string, any[]> = {
+export const shoppingFixtures: Record<string, Record<string, string>[]> = {
   "organic cotton tee": [
     { title: "Organic Cotton Crew Tee", price: "$32.00", seller: "Northfield Apparel" },
     { title: "100% Organic Cotton T-Shirt", price: "$24.99", seller: "BasicsCo" },
@@ -15,7 +15,7 @@ export const shoppingFixtures: Record<string, any[]> = {
     { title: "High-Rise Straight Jeans", price: "$124.00", seller: "Verdant Goods" },
   ],
 };
-export const newsFixtures: Record<string, any[]> = {
+export const newsFixtures: Record<string, Record<string, string>[]> = {
   "retail apparel pricing": [
     { title: "Apparel retailers hold prices steady as cotton costs ease", snippet: "Mid-market clothing brands are resisting price increases despite input cost pressure.", date: "2 days ago", link: "https://example.com/news/1" },
     { title: "Organic cotton demand reshapes basics pricing", snippet: "Retailers report organic cotton tees now command a 15 percent premium.", date: "5 days ago", link: "https://example.com/news/2" },
