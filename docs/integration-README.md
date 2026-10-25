@@ -6,7 +6,7 @@ The integration branch connects the merged builder, shared engine, tools, playgr
 
 - Repaired the merged package scripts and replaced stale synchronous owner lookups with explicit verified owner IDs in run/evaluation queries and APIs. Removed saved-agent header fallback to made-up fixture agents.
 - Runtime, drafting and the builder catalog now use one registry: knowledge search, seeded sales lookup, Google Shopping, Google News, webpage extraction, recorded email, and the original ticket tool for compatibility. The guarded dispatcher still owns validation, enabled-tool enforcement, limits and write approval. The development direct-tool bypass now returns 410.
-- Workspace knowledge is stored in PostgreSQL and searched alongside the labeled sample company policies. Other users' documents are excluded. Recorded email is durable and idempotent; it is explicitly a demo action and delivers no email. Evaluations deny writes.
+- Workspace knowledge is stored in PostgreSQL and searched separately from illustrative sample policies; once private documents exist, sample policies are excluded. Other users' documents are excluded. Recorded email is durable and idempotent; no email provider is connected and nothing is delivered. See guarded-actions.md. Evaluations deny writes.
 - Runtime records now tag the actual agent version and distinguish test versus playground runs. Owner-scoped run queries preserve history snapshots and do not return checkpoints.
 - SerpApi uses existing fetch, cancellation and ignored local cache. Curated fallback results carry `demo: true` and are used only without a key; they are not proof of live search. Extract parsing uses the documented `text_content` response. [SerpApi Extract API](https://serpapi.com/extract-api)
 
@@ -35,9 +35,22 @@ The temporary root integration backbone is local-only and excluded from Git. Thi
 1. Sign in or continue as guest. Each guest gets a private workspace.
 2. Start a support/pricing template or draft with Gemini; inspect instructions, tool permissions and limits. Template/draft creation includes suggested cases.
 3. Save. The builder requests the saved suite automatically; open Tests to inspect results and their recorded traces. Manual agents need at least one case. API clients can call the evaluation endpoint after saving.
-4. In Playground send a question. Read calls execute immediately; a write displays its exact arguments and pauses. Approve or reject. Email is a database record only.
+4. In Playground send a question. Read calls execute immediately; writes requiring review display their exact arguments and pause for approval or rejection. Supported automatic writes follow server restrictions and a per-run cap. Email is record-only; no message is sent.
 5. Open Runs to inspect the persisted answer, tool events and usage, or reopen a saved playground URL to review/resume a pending approval.
 6. Publish from Tests after the current evidence passes. Saving/restoring creates a new revision; the previous published version remains visible while new checks run.
 7. Open Versions for saved YAML/restore and Tools & Knowledge to add private text or inspect recorded emails.
 
 No public dashboard numbers imply a hosted Tiger write. `DATABASE_TARGET` still selects the existing database, with local PostgreSQL available. No additional dependency, payment, deployment, or provider integration was introduced here.
+
+
+## Public onboarding and consistency audit
+
+The root promotion, new-agent form and tools catalog are public. Saving, Gemini drafting, execution, saved-agent editors, history and private documents still require sessions; every API enforces its own authorization. The builder opens authentication at protected actions and retains bounded form values, including write policy and limits, across login/OAuth. Signing out returns to the public promotion.
+
+New support/pricing templates use the signed-in name or Guest, with an editable store/workspace name persisted in configurations, duplicates and restored revisions. Illustrative policies and sales are explicitly labeled; uploaded private knowledge suppresses sample policy fallback. Historical user-saved agent names/instructions are preserved, not silently rewritten. New templates no longer claim to represent a fictional business. Existing support-template URLs remain compatible.
+
+The audit also corrected blank/empty YAML serialization, ambiguous string values, placeholder approval copy, an unsolicited prefilled playground prompt, and the public/private tools boundary. Supported automatic writes are bounded, traced as policy-authorized, and still denied during evaluation. Old configurations default to approval. [Guarded actions](guarded-actions.md) documents typed, record-only email templates and write limits. No Jev provider was added: current permission checks are deterministic; the existing Gemini semantic grader remains optional.
+
+Verification for this batch: 105 unit tests, 62 PostgreSQL integration tests, TypeScript and lint. Email is record-only; no live external messaging connector is claimed. The default Turbopack production build passes. Browser checks confirmed signed-out promotion/form access, personalized template names, authentication only on Save, and preservation of the filled form after guest sign-in.
+
+A live browser/Gemini check also created a real workspace ticket without an approval pause. Its persisted trace showed `Automatic · saved policy` and a successful final response with the actual ticket ID. No email was sent or recorded in this check.

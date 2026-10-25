@@ -136,7 +136,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
           output = await withCancellation(signal, () => dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
             context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
         } catch (error) {
-          const safeCodes = new Set(["ticket_not_found", "email_recipient_not_allowed", "email_rate_limit", "email_delivery_unknown", "email_delivery_rejected", "email_delivery_sending", "idempotency_conflict"]);
+          const safeCodes = new Set(["ticket_not_found", "idempotency_conflict"]);
           const reason = error instanceof Error && safeCodes.has(error.message) ? error.message : "tool_execution_failed";
           await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason } });
           throw error;

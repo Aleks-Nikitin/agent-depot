@@ -7,7 +7,7 @@ import { cn } from "@/components/ui/cn";
 import { AccountMenu } from "@/components/auth/account-menu";
 
 // Shared navigation for the signed-in workspace.
-export function TopNav({ workspace = "Personal workspace" }: { workspace?: string }) {
+export function TopNav() {
   const pathname = usePathname();
   // Playground / Tests follow the selected agent, otherwise open the agent chooser.
   const candidate = pathname.match(/^\/agents\/([^/]+)/)?.[1];
@@ -37,11 +37,7 @@ export function TopNav({ workspace = "Personal workspace" }: { workspace?: strin
             </Link>
           ))}
         </div>
-        <span className="ml-auto hidden shrink-0 items-center gap-2 rounded-lg border border-(--ad-border) bg-(--ad-raised) px-3 py-1.5 text-[13px] xl:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
-          {workspace}
-        </span>
-        <AccountMenu />
+        <div className="ml-auto"><AccountMenu /></div>
       </nav>
     </header>
   );

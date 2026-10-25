@@ -8,23 +8,22 @@ See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitor
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.
 
-Main's playground UI and runtime diagnostics merges are integrated through `e1c3088`. The playground is still in `CLIENT_MODE = "mock"`, run history reads fixtures, and the tests screen uses fixtures. Merging these screens does not establish a live browser-to-runtime flow. See [playground integration gaps](playground-placeholders.md) for their implementation backlog.
+The playground, saved run history, evaluation lab, version history and dashboard now use owner-scoped backend data. Browser sessions authorize execution and approvals. The root promotion, new-agent form and tool catalog are public; saving, Gemini drafting, execution and private workspace data require login or isolated guest access. See [integration status](integration-README.md) and [authentication implementation](auth-README.md).
 
-Three integration gates remain outside the completed core engine:
+Two external verification gates remain:
 
-1. **Playground and evaluations:** replace history fixtures with owner-scoped reads and connect the test runner. Better Auth sessions now authorize browser requests directly to execution/approval; protected screens require login or isolated guest access. The UI remains in mock mode pending its history/data integration. See [authentication implementation](auth-README.md).
-2. **Optional hosted Tiger verification:** establish external connectivity, apply setup, and prove an application-originated metric write/read and monitoring read. The HeavyFuel URL-specific SSL compatibility option was applied on request, but both strict TCP diagnostics and the actual `pg` client still time out before TLS. Local TimescaleDB success is not hosted verification. The existing Tiger selector changes the entire primary database; an independently optional analytics destination would require a separate export design and is not implemented.
-3. **Deployment:** verify the deployed authentication boundary, streaming, approval/resume and database migrations. Local compilation and tests do not establish deployment success.
+1. **Optional hosted Tiger verification:** establish external connectivity and prove application-originated metric write/read and monitoring read. The requested HeavyFuel URL-specific SSL compatibility option does not resolve the observed TCP timeout before TLS. Local TimescaleDB success is not hosted verification. `DATABASE_TARGET` selects the primary database; a separate analytics export destination is not implemented.
+2. **Deployment:** verify deployed authentication, streaming, approval/resume and migrations. Local tests do not establish deployment success.
 
-The auth branch follow-up passed **68 unit tests, 43 PostgreSQL integration tests, typecheck, lint and production compilation** using the documented one-off webpack fallback. The default Turbopack dev server also passed the auth/guest browser workflow on localhost:3000. The earlier isolated TimescaleDB suite passed **35 integration tests**; its SQL/setup has not changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures and simulated OAuth/model responses are not included in that live claim.
+The current integration audit passed **105 unit tests, 62 PostgreSQL integration tests, typecheck, lint and the default Turbopack production build**. Browser checks verified public onboarding, draft preservation across guest login and a real Gemini-created ticket executed automatically under saved policy. Earlier local TimescaleDB checks passed separately; no hosted success is claimed. Live GitHub OAuth remains pending configuration/verification.
 
-The runtime now exposes authenticated hourly analytics through `GET /api/runtime/metrics`. It returns owner-scoped outcome, active-duration, model/tool, token and estimated-cost aggregates from PostgreSQL or the configured Timescale view. See the metrics document for query parameters and authentication. This fills the analytics HTTP read boundary; it does not switch the fixture-backed dashboard to live data.
+Authenticated `GET /api/runtime/metrics` returns owner-scoped outcome, active-duration, model/tool, token and estimated-cost aggregates from PostgreSQL or the configured Timescale view. The dashboard consumes live workspace data. Email is record-only; [guarded actions](guarded-actions.md) describes automatic writes and their constraints.
 
 `npm run typecheck` now runs `next typegen` before `tsc --noEmit`. This refreshes generated `PageProps`/`LayoutProps` route definitions after pulling new pages/layouts, without requiring a production build. No dependency or bundler change is involved.
 
 ## Overview
 
-One backend engine runs saved agents with different instructions and tools. It loads owner-scoped configuration, exposes only permitted tools, validates arguments, executes bounded model/tool rounds, streams durable events, pauses writes for human approval, and resumes with the same state. Evaluations reuse the engine with writes automatically denied. An additional endpoint generates editable agent drafts with tool reasons, assumptions and suggested tests.
+One backend engine runs saved agents with different instructions and tools. It loads owner-scoped configuration, exposes only permitted tools, validates arguments, executes bounded model/tool rounds, streams durable events, applies saved write policy, and resumes human-reviewed actions with the same state. Evaluations reuse the engine with writes automatically denied. An additional endpoint generates editable agent drafts with tool reasons, assumptions and suggested tests.
 
 The included integrations use clearly labeled demo policy and sales datasets and a real local database ticket write. External integrations use the same tool interface. The agent builder supplies saved configurations, and the playground consumes execution events.
 
@@ -68,15 +67,15 @@ The server-selected model, rates and execution-profile version form a fingerprin
 
 For example, a support agent receives “Can I return this after 20 days?” The engine loads its saved instructions and permitted tools, asks Gemini what to do, validates a `knowledge_search` call, runs it, and gives the result back to Gemini for the final answer. A sales agent follows the same loop with `sales_lookup` enabled instead. Each stage saves an ordered event that the playground can show later.
 
-If the agent requests `create_ticket`, the engine saves the exact proposed arguments and pauses. Approval resumes that same run and executes that call; rejection returns a denial to the model. Limits and estimated cost continue across resumes. At the end, PostgreSQL atomically saves the terminal state, final event and one metric row. Hourly analytics summarize those metric rows; optional TimescaleDB accelerates that query through a continuous aggregate. The current Docker database already supports the raw PostgreSQL analytics path.
+A supported automatic `create_ticket` executes within the saved policy and write cap. When review is required, the engine saves the exact arguments and pauses; approval resumes that call and rejection returns a denial to the model. Limits and estimated cost continue across resumes. At the end, PostgreSQL atomically saves the terminal state, final event and one metric row. Hourly analytics summarize those metric rows; optional TimescaleDB accelerates that query through a continuous aggregate. The current Docker database already supports the raw PostgreSQL analytics path.
 
 1. The route authenticates, bounds/validates the JSON body and resolves a saved agent using its verified owner.
 2. `runAgent()` snapshots configuration and policy, creates a run and records `run_started`.
 3. The engine checks cancellation/deadline, model/tool counts, context size and estimated budget before additional work.
 4. It reserves estimated model cost durably and makes exactly one AI SDK generation request. Tools have schemas/descriptions but no automatic executor attached to the SDK. Only the guarded dispatcher can invoke them.
 5. It reconciles reported usage, records the model event, validates tool calls, and executes calls serially. Tool results retain the provider tool-call IDs in the conversation.
-6. A write in evaluation mode gets a denial result. An interactive write saves the exact pending call and checkpoint atomically, records `approval_required`, and ends the response without executing the write.
-7. A later approval request claims that decision once, records resolution, and resumes the same run. An approved write executes with its saved arguments; a rejected call produces a denial result. Every additional write needs a new approval.
+6. A write in evaluation mode gets a denial result. Supported automatic writes execute within saved policy and the per-run write cap. Otherwise the engine atomically saves the pending call/checkpoint, records `approval_required`, and closes the stream without executing the write.
+7. A later approval request claims that decision once, records resolution, and resumes the same run. An approved write executes with its saved arguments; a rejected call produces a denial result. Each later call is checked again against saved policy; an approval authorizes only its exact pending call.
 8. Completion, a policy stop or a failure persists final state before its event is sent to the browser.
 
 **Runtime-owned execution loop.** One loop provides a single place to enforce approvals, counters, budgets and checkpoint state. The AI SDK handles provider protocol and structured output; it does not own application authorization or the database workflow.
@@ -93,9 +92,9 @@ Event persistence does not depend on `onEvent`. Server-side evaluations and runs
 
 The authoritative browser-safe types and Zod schemas live in `lib/agents/contracts/index.ts`. Example agent configurations and complete event lifecycles live in `lib/agents/fixtures/index.ts`. Import those definitions rather than maintaining parallel interfaces.
 
-Store each agent in an `Agent` row whose `config` satisfies `AgentConfigSchema`. Configuration ID, owner and version must match the row. Fields are `id`, `ownerId`, `version`, `name`, `instructions`, `model: "gemini"`, enabled tool IDs, mandatory write approval, and validated limits. Tools are referenced by ID; never put executor code or Zod objects in database JSON.
+Store each agent in an `Agent` row whose `config` satisfies `AgentConfigSchema`. Configuration ID, owner and version must match the row. Fields are `id`, `ownerId`, `version`, `name`, `instructions`, `model: "gemini"`, enabled tool IDs, optional workspace name, saved write-approval policy, and validated limits. Older configurations default to human approval. Tools are referenced by ID; never put executor code or Zod objects in database JSON.
 
-Default limits are five model calls, ten tool calls, $0.05 estimated model cost, 512 total output tokens per call and 30 seconds of active runtime across resumes. Schema maxima prevent clients/configuration from requesting arbitrary limits. HTTP run requests cannot override policy. Text prompts are bounded, context serialization is capped at 100 KB, and each tool result at 32 KiB of JSON.
+Default limits are five model calls, ten tool calls, two write calls (maximum five), $0.05 estimated model cost, 512 total output tokens per call and 30 seconds of active runtime across resumes. Schema maxima prevent clients/configuration from requesting arbitrary limits. HTTP run requests cannot override policy. Text prompts are bounded, context serialization is capped at 100 KB, and each tool result at 32 KiB of JSON.
 
 Each tool implements `ToolDefinition` from `lib/agents/tools/registry.ts`:
 

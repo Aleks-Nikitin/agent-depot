@@ -1,3 +1,4 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -27,7 +28,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 
 async function RunDetailContent({ params }: { params: Promise<{ runId: string }> }) {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return null;
+  if (!ownerId) return <AuthPrompt />;
   const { runId } = await params;
   const found = await getRun(ownerId, decodeURIComponent(runId));
   if (!found) notFound();

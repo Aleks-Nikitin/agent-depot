@@ -1,3 +1,4 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { Suspense } from "react";
@@ -10,7 +11,7 @@ export const metadata: Metadata = { title: "Playground · AgentDepot" };
 
 async function Content({ params, searchParams }: PageProps<"/agents/[id]/playground">) {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return null;
+  if (!ownerId) return <AuthPrompt />;
   const { id } = await params;
   const query = await searchParams;
   const runId = typeof query.runId === "string" ? query.runId : undefined;

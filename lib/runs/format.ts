@@ -58,10 +58,12 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
 
 /** Stop reasons from the runtime, in plain words. Unknown codes fall back to the code itself. */
 const reasons: Record<string, string> = {
+  write_limit: "Write-action limit reached",
+  ticket_not_found: "The support ticket does not exist in this workspace",
   step_limit: "Step limit reached", tool_limit: "Tool-call limit reached", budget_limit: "Cost cap reached",
   usage_unknown: "Provider did not report usage", context_limit: "Context too large", output_limit: "Output limit reached",
   model_policy_changed: "Model or pricing changed while paused", interrupted_or_timeout: "Run timed out or was interrupted",
   execution_failed: "Execution failed", provider_failure: "Model provider failed", event_delivery_failed: "Event delivery failed",
-  write_denied: "Write rejected by a human", stream_ended: "Connection ended before the run finished",
+  write_denied: "Write denied by the run policy", stream_ended: "Connection ended before the run finished",
 };
 export const describeReason = (code: string) => reasons[code] ?? code;

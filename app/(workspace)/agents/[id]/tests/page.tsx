@@ -1,3 +1,4 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -23,7 +24,7 @@ async function loadSavedTests(ownerId: string, agentId: string) {
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return null;
+  if (!ownerId) return <AuthPrompt />;
   const id = decodeURIComponent((await params).id);
   if (TESTS_SOURCE === "fixtures") {
     const agent = getFixtureAgent(id);

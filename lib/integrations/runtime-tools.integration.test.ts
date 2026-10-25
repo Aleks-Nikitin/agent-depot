@@ -16,6 +16,7 @@ const runs: string[] = [];
 const config = { ...supportAgent, ownerId, enabledTools: [...runtimeRegistry.keys()] };
 const context = { ownerId, runId: "read-only", toolCallId: "read", idempotencyKey: "read", signal: AbortSignal.timeout(10_000) };
 afterAll(async () => {
+  await db.demoTicket.deleteMany({ where: { ownerId } });
   await db.knowledgeDocument.deleteMany({ where: { ownerId } });
   await db.agentRun.deleteMany({ where: { id: { in: runs } } });
   await db.$disconnect();
@@ -27,6 +28,9 @@ it("uses the shared registry and workspace knowledge without leaking another own
   await db.knowledgeDocument.create({ data: { ownerId, title: "Private policy", text: `${query} customers get a replacement.` } });
   const own = await dispatchTool({ config, registry: runtimeRegistry, toolId: "knowledge_search", input: { query }, context });
   expect(own).toHaveProperty("matches.length", 1);
+  expect(own).toMatchObject({ sample: false, dataKind: "workspace_documents" });
+  const absent = await dispatchTool({ config, registry: runtimeRegistry, toolId: "knowledge_search", input: { query: "unused jackets returns" }, context });
+  expect(absent).toMatchObject({ matches: [], sample: false });
   const other = await dispatchTool({ config: { ...config, ownerId: "another-owner" }, registry: runtimeRegistry,
     toolId: "knowledge_search", input: { query }, context: { ...context, ownerId: "another-owner" } });
   expect(other).toMatchObject({ matches: [] });
@@ -56,5 +60,53 @@ it("pauses and resumes recorded email through the guarded engine, and never reco
     const saved = await db.agentRun.findUniqueOrThrow({ where: { id: result.runId } });
     expect(saved.source).toBe(evaluation ? "test" : "playground");
     expect(saved.agentVersion).toBe(config.version);
+  }
+});
+
+it("executes supported writes automatically with strict ticket/email templates and a per-run cap", async () => {
+  const automatic = { ...config, requireWriteApproval: false };
+  let turn = 0;
+  const driver: ModelDriver = { key: "automatic-write-test", estimate: () => 0.00001, turn: async (_config, messages) => {
+    ++turn;
+    if (turn === 1) return { text: "", messages: [], calls: [{ toolId: "create_ticket", toolCallId: "ticket-1", input: { subject: "Review order 1042" } }], inputTokens: 1, outputTokens: 1 };
+    if (turn === 2) {
+      const results = JSON.stringify(messages);
+      const ticket = await db.demoTicket.findFirstOrThrow({ where: { ownerId }, orderBy: { createdAt: "desc" } });
+      expect(results).toContain(ticket.id);
+      return { text: "", messages: [], calls: [{ toolId: "send_email", toolCallId: "email-2", input: { to: "demo@example.test", template: "support_acknowledgement", ticketId: ticket.id } }], inputTokens: 1, outputTokens: 1 };
+    }
+    return { text: "Recorded", messages: [], calls: [], inputTokens: 1, outputTokens: 1 };
+  } };
+  const events: RunStep[] = [];
+  const result = await runAgent({ config: automatic, ownerId, message: "Record the support acknowledgement" }, {
+    store: new PrismaRunStore(db), registry: runtimeRegistry, driver, onEvent: event => { events.push(event); if (!runs.includes(event.runId)) runs.push(event.runId); },
+  });
+  expect(result.status).toBe("completed");
+  expect(events.some(event => event.type === "approval_required")).toBe(false);
+  expect(events.filter(event => event.type === "tool_started").every(event => event.type === "tool_started" && event.payload.authorization === "policy")).toBe(true);
+  const email = await db.recordedEmail.findFirstOrThrow({ where: { runId: result.runId } });
+  expect(email.body).toContain("does not confirm a refund");
+  expect(email.body).not.toContain("Review order 1042"); // no arbitrary model content in the automatic message
+
+  turn = 0;
+  const cappedDriver: ModelDriver = { ...driver, turn: async () => ({ text: "", messages: [], calls: [{ toolId: "create_ticket", toolCallId: `ticket-${++turn}`, input: { subject: "Repeated request" } }], inputTokens: 1, outputTokens: 1 }) };
+  const capped = await runAgent({ config: { ...automatic, limits: { ...automatic.limits, maxWriteCalls: 1 } }, ownerId, message: "test limit" }, {
+    store: new PrismaRunStore(db), registry: runtimeRegistry, driver: cappedDriver, onEvent: event => { if (!runs.includes(event.runId)) runs.push(event.runId); },
+  });
+  expect(capped).toMatchObject({ status: "blocked", stopReason: "write_limit" });
+});
+
+it("automatic policy still denies evaluation writes and requires approval for freeform email", async () => {
+  const automatic = { ...config, requireWriteApproval: false };
+  for (const evaluation of [false, true]) {
+    let turn = 0;
+    const driver: ModelDriver = { key: "automatic-policy-test", estimate: () => 0.00001, turn: async () => ++turn === 1
+      ? { text: "", messages: [], calls: [{ toolId: "send_email", toolCallId: "freeform", input: { to: "demo@example.test", subject: "Unreviewed", body: "Arbitrary text" } }], inputTokens: 1, outputTokens: 1 }
+      : { text: "Not sent", messages: [], calls: [], inputTokens: 1, outputTokens: 1 } };
+    const result = await runAgent({ config: automatic, ownerId, message: "test", approvalMode: evaluation ? "deny" : "human" }, {
+      store: new PrismaRunStore(db), registry: runtimeRegistry, driver, onEvent: event => { if (!runs.includes(event.runId)) runs.push(event.runId); },
+    });
+    expect(result.status).toBe(evaluation ? "completed" : "waiting_approval");
+    expect(await db.recordedEmail.count({ where: { runId: result.runId } })).toBe(0);
   }
 });

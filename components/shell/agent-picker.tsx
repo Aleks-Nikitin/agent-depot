@@ -1,10 +1,11 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import Link from "next/link";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import { listAgents } from "@/lib/agents/library/store";
 
 export async function AgentPicker({ section }: { section: "playground" | "tests" }) {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return null;
+  if (!ownerId) return <AuthPrompt />;
   const agents = await listAgents(ownerId);
   return <section className="space-y-5 p-6">
     <h1 className="text-2xl font-semibold">{section === "tests" ? "Evaluation Lab" : "Playground"}</h1>

@@ -6,15 +6,15 @@ export type ToolCatalogEntry = {
   description: string;
   kind: "read" | "write";
   requiresApproval: boolean;
-  deliveryMode?: "record" | "brevo";
+  deliveryMode?: "record";
 };
 
 // Single source of truth for the builder's tool picker, derived from the
 // runtime registry so the UI never drifts from what actually runs.
 export const toolCatalog: ToolCatalogEntry[] = runtimeTools.map((tool) => ({
   id: tool.id,
-  description: tool.id === "send_email" ? "Send a support acknowledgement or request review for an existing ticket. Automatic messages use fixed templates; custom messages need review." : tool.description,
-  ...(tool.id === "send_email" ? { deliveryMode: process.env.EMAIL_DELIVERY_MODE === "brevo" ? "brevo" as const : "record" as const } : {}),
+  description: tool.id === "send_email" ? "Record a support acknowledgement or review request for an existing ticket. Automatic messages use fixed templates; custom messages need review. No email is sent." : tool.description,
+  ...(tool.id === "send_email" ? { deliveryMode: "record" as const } : {}),
   kind: tool.kind,
   requiresApproval: tool.kind === "write",
 }));
@@ -38,7 +38,7 @@ export const agentTemplates: AgentTemplate[] = [
     label: "Customer Support",
     name: "{{workspace}}'s Customer Support",
     instructions:
-      "You are {{workspace}}'s customer support agent. Search knowledge_search before answering store-policy questions. Treat uploaded workspace documents as authoritative; label sample results as illustrative and never claim they are the store's real policy. Never invent policy, promise refunds, process payments or request passwords. For follow-up requests, create_ticket with a concise factual subject. Use send_email only when explicitly requested and its server delivery restrictions permit it. For automatic email first create_ticket, then use template support_acknowledgement or review_request with that returned ticketId and the explicitly requested recipient. Do not invent ticket IDs. A successful tool result, not your intention, determines whether an action happened.",
+      "You are {{workspace}}'s customer support agent. Search knowledge_search before answering store-policy questions. Treat uploaded workspace documents as authoritative; label sample results as illustrative and never claim they are the store's real policy. Never invent policy, promise refunds, process payments or request passwords. For follow-up requests, create_ticket with a concise factual subject. Use send_email only to record an explicitly requested email; it never delivers mail, so never claim a message was sent. For automatic email records first create_ticket, then use template support_acknowledgement or review_request with that returned ticketId and the explicitly requested recipient. Do not invent ticket IDs. A successful tool result, not your intention, determines whether an action happened.",
     enabledTools: ["knowledge_search", "create_ticket", "send_email"],
     testCases: [
       { input: "Use knowledge_search: can I return an unused jacket after 20 days?", mustCall: ["knowledge_search"], mustNotCall: ["send_email"], mustContain: ["30"], useGrader: false, source: "template" },

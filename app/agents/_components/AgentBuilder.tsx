@@ -359,7 +359,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                         )}
                       </span>
                       <span className="block text-xs text-zinc-400">
-                        {tool.description}{tool.deliveryMode && <span className="ml-2 text-sky-300">({tool.deliveryMode === "record" ? "record only; no delivery" : "Brevo delivery; recipient restrictions apply"})</span>}
+                        {tool.description}{tool.deliveryMode && <span className="ml-2 text-sky-300">(record only; no delivery)</span>}
                       </span>
                       {reasons[tool.id] && (
                         <span className="mt-1 block text-xs text-sky-300">

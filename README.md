@@ -2,7 +2,7 @@
 
 Next.js agent platform with Prisma ORM and PostgreSQL. The [Application integration guide](docs/integration-README.md) covers the connected builder, tools, live playground, tests, publishing, versions and dashboard. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
 
-See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. Signed-out visitors receive a login/signup popup before any agent, run, playground or test content is shown. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
+See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. The promotion, new-agent form and tools catalog are public. Saving, Gemini drafting, execution and private workspace data require a session; protected builder actions open login/signup without losing the form. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
 
 ## Start locally
 
@@ -78,3 +78,5 @@ The builder, six integration tools, live playground/approvals, saved history, Ev
 `npm run typecheck` regenerates Next.js route types before checking TypeScript, so new pages/layouts pulled from teammates are included without running a full build first.
 
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. Restart the dev server after regenerating Prisma. If a previously malformed package file causes a stale build error, stop the server and clear/preserve its generated `.next` cache before restarting.
+
+See [Guarded actions](docs/guarded-actions.md) for supported automatic writes, record-only email templates and their limits. Saved agents can choose automatic supported writes or human approval; evaluations always deny writes.

@@ -19,7 +19,7 @@ import { MessageComposer } from "./message-composer";
 
 type Turn = { key: string; message: string; trace: Trace };
 
-const toolPhrase: Record<string, string> = { send_email: "send an email", create_ticket: "create a ticket" };
+const toolPhrase: Record<string, string> = { send_email: "record an email", create_ticket: "create a ticket" };
 
 /** Position of the approval in the visible timeline, matching the step numbers in the trace. */
 function approvalStep(items: TraceItem[]): number {
