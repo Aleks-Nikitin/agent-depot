@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { RunStep } from "../contracts";
+import { withCancellation } from "./cancellation";
 
 export class HttpError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -14,23 +15,31 @@ export function authorize(request: Request): string {
   // Single-demo-workspace adapter. Replace with session ownership for multi-user use.
   return "demo";
 }
-export async function readBody<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
+export async function readBody<T>(request: Request, schema: z.ZodType<T>, timeoutMs = 10_000): Promise<T> {
   const reader = request.body?.getReader();
   if (!reader) throw new HttpError(400, "invalid_body");
   const chunks: Uint8Array[] = []; let length = 0;
+  const signal = AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]);
+  let consumed = false;
   try {
     while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
+      const { value, done } = await withCancellation(signal, () => reader.read());
+      if (done) { consumed = true; break; }
       length += value.byteLength;
-      if (length > 16_384) { await reader.cancel(); throw new HttpError(413, "body_too_large"); }
+      if (length > 16_384) throw new HttpError(413, "body_too_large");
       chunks.push(value);
     }
     return schema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
   } catch (error) {
     if (error instanceof HttpError) throw error;
+    if (signal.aborted) throw new HttpError(408, request.signal.aborted ? "request_aborted" : "body_timeout");
     throw new HttpError(400, "invalid_body");
-  } finally { reader.releaseLock(); }
+  } finally {
+    // Do not wait on a source that ignores cancellation: the size/time limit
+    // still has to return promptly, even for a stalled request stream.
+    if (!consumed) void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 export function httpError(error: unknown): Response {
   if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
@@ -45,9 +54,12 @@ export function streamRun(request: Request, task: (signal: AbortSignal, emit: (e
   let open = true;
   const stream = new ReadableStream<Uint8Array>({
     start(writer) {
-      void Promise.resolve().then(() => task(signal, event => {
+      void Promise.resolve().then(() => {
+        signal.throwIfAborted();
+        return task(signal, event => {
         if (open) writer.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"));
-      })).then(() => { if (open) { open = false; writer.close(); } }, () => {
+        });
+      }).then(() => { if (open) { open = false; writer.close(); } }, () => {
         if (open) { open = false; writer.error(new Error("run_stream_failed")); }
       });
     },

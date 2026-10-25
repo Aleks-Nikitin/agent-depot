@@ -61,6 +61,8 @@ The server-selected model, rates and execution-profile version form a fingerprin
 
 **Persistence before streaming.** The timeline describes work retrievable from history. Essential persistence failure stops further execution. Runtime exceptions are mapped to safe failure reasons rather than exposing provider bodies or credentials.
 
+Event persistence does not depend on `onEvent`. Server-side evaluations and runs without a live listener retain the same complete trace. If an active subscriber throws, the runtime stops before more work and records `event_delivery_failed`. If completion or an approval pause has already been committed, a delivery failure preserves that durable state; history replay supplies the saved event. A failure while delivering approval resolution records a failed run before executing the write rather than leaving it running.
+
 ## Shared configuration and tool contracts
 
 The authoritative browser-safe types and Zod schemas live in `lib/agents/contracts/index.ts`. Example agent configurations and complete event lifecycles live in `lib/agents/fixtures/index.ts`. Import those definitions rather than maintaining parallel interfaces.
@@ -88,7 +90,7 @@ All endpoints use the demo bearer authorization adapter. Replace `authorize()` w
 - `POST /api/approvals/[id]`: `{ "approved": true }` (or false) → resumed NDJSON events for the same run.
 - `POST /api/agents/draft`: `{ "goal": "..." }` → `{ draft, usage }` JSON.
 
-Requests are capped at 16 KiB. Unexpected body fields are rejected. Before streaming, invalid bodies return 400, missing/wrong authorization 401, missing runtime auth/configuration 503, inaccessible records 404, and unavailable/reused approvals 409. A failure after response headers have been sent is represented in execution events; HTTP 200 alone does not mean success. An essential store/transport failure may terminate the stream; the client must not mark a run successful without its completion event.
+Requests are capped at 16 KiB and body reading has a 10-second deadline. Stalled bodies return 408 (`body_timeout`); disconnected reads return 408 (`request_aborted`). Body size/time failures cancel the source without waiting indefinitely for cancellation acknowledgment. Already-disconnected requests do not start streamed execution, and response-reader cancellation propagates the abort signal to active runtime work. Unexpected body fields are rejected. Before streaming, invalid bodies return 400, missing/wrong authorization 401, missing runtime auth/configuration 503, inaccessible records 404, and unavailable/reused approvals 409. A failure after response headers have been sent is represented in execution events; HTTP 200 alone does not mean success. An essential store/transport failure may terminate the stream; the client must not mark a run successful without its completion event.
 
 Event envelopes contain `schemaVersion`, `eventId`, `runId`, increasing `sequence`, ISO `timestamp`, `type` and a typed `payload`. Events cover run start/end/block/failure, model start/finish, tool request/start/finish/failure, and approval request/resolution. Tool-call IDs correlate requests/results. Unknown usage is null, not implicitly zero. Events contain operational data, not private model reasoning. Tool implementers must return only input/output data safe for the UI.
 
@@ -133,7 +135,7 @@ Budget enforcement estimates input from UTF-8 serialized context/schema size plu
 
 This is an **estimated model budget**, not a guaranteed provider invoice ceiling. Reasoning is included in total output usage and cost. Only text and the selected provider profile are supported; no paid grounding, media generation, explicit cache storage or external paid tool charges are implied. Recheck pricing/profile assumptions before adding them.
 
-Run states are running, waiting_approval, completed, blocked and failed. Stable stop reasons include step_limit, tool_limit, budget_limit, usage_unknown, context_limit, output_limit and model_policy_changed. Interrupted/deadline-expired runs fail with interrupted_or_timeout; unexpected provider/tool failures use execution_failed rather than leaking exception content.
+Run states are running, waiting_approval, completed, blocked and failed. Stable stop reasons include step_limit, tool_limit, budget_limit, usage_unknown, context_limit, output_limit and model_policy_changed. Interrupted/deadline-expired runs fail with interrupted_or_timeout; unexpected provider/tool failures use execution_failed rather than leaking exception content. An active event subscriber failure uses event_delivery_failed; already-persisted completion/approval-pause states remain authoritative even if their notification fails.
 
 Waiting approvals survive refresh/process replacement. Active operations honor cancellation where the underlying integration supports it; a non-cooperative side effect may finish after cancellation. A process crash can leave an active run marked running. This prototype does not include a lease/recovery worker and does not automatically replay crashed writes. External writes require integration-level idempotency or reconciliation; a database claim alone cannot guarantee exactly-once delivery.
 
@@ -167,8 +169,18 @@ On October 24, 2026, all five live checks passed against the configured Gemini 3
 
 Verified on October 24, 2026:
 
-- 20 unit tests and 17 PostgreSQL integration tests passed.
+- Initial feature verification passed 20 unit tests and 17 PostgreSQL integration tests. Follow-up verification is recorded below.
 - TypeScript and lint checks passed.
 - All five live Gemini smoke checks passed.
 - Production compilation passed with the one-off webpack fallback.
 - The default Turbopack worker-port restriction remains an environment limitation. Session authentication, application UI integration, and deployment require their own integration checks.
+
+### Post-merge reliability fixes
+
+- `aae11f6`: persist complete execution history without an event callback, including evaluation write denials.
+- `53bce30`: stop active runs safely on subscriber failure and preserve durable completion/pending approval states when only delivery fails.
+- `da80c51`: bound body reads, cancel stalled sources, and propagate request/response disconnects without starting cancelled work.
+
+These changes preserve the existing API request/event schemas, database schema, dependencies, and default Turbopack configuration. History remains available through the existing owner-scoped store API.
+
+Post-merge batch verification on October 24, 2026: **25 unit tests and 23 PostgreSQL integration tests passed**, together with TypeScript, lint and one-off webpack production compilation. All five live Gemini smoke checks passed again; the batch's aggregate model-cost estimate was **$0.001267**. No database migration, dependency change, or API schema change was required.
