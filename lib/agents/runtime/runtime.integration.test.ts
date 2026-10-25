@@ -191,3 +191,53 @@ it("persists denied write events for evaluation runs without a live listener", a
   expect(history.events.some(e => e.type === "tool_failed" && e.payload.reason === "write_denied")).toBe(true);
   expect(tools.run).not.toHaveBeenCalled();
 });
+
+it("fails a newly started run durably if its live subscriber throws", async () => {
+  const model = driver([answer()]);
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: model,
+    onEvent(event) { created.push(event.runId); throw new Error("subscriber private details"); },
+  });
+  expect(result.status).toBe("failed"); expect(result.stopReason).toBe("event_delivery_failed");
+  expect(model.turn).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  expect(history.events.map(e => e.type)).toEqual(["run_started", "run_failed"]);
+  expect(JSON.stringify(history)).not.toContain("subscriber private details");
+});
+it("preserves a durable completion when only final-event delivery fails", async () => {
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: driver([answer()]),
+    onEvent(event) { if (event.type === "run_started") created.push(event.runId); if (event.type === "run_completed") throw new Error("closed subscriber"); },
+  });
+  expect(result.status).toBe("completed");
+  const history = await store.history(result.runId, "demo");
+  expect(history.status).toBe("completed");
+  expect(history.events.filter(e => ["run_completed", "run_failed"].includes(e.type))).toHaveLength(1);
+});
+it("preserves a pending approval when pause notification fails and permits later resume", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "delivery-pause", input: { query: "test" } }), answer()]);
+  const tools = registry();
+  const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
+    store, driver: model, registry: tools.tools,
+    onEvent(event) { if (event.type === "run_started") created.push(event.runId); if (event.type === "approval_required") throw new Error("closed subscriber"); },
+  });
+  expect(result.status).toBe("waiting_approval"); expect(tools.run).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  const approval = history.events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected durable approval");
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, driver: model, registry: tools.tools });
+  expect(resumed.status).toBe("completed"); expect(tools.run).toHaveBeenCalledOnce();
+  const completeHistory = await store.history(result.runId, "demo");
+  expect(completeHistory.events.some(e => e.type === "tool_finished")).toBe(true);
+});
+it("records a failure before writes if an approval-resolution subscriber fails", async () => {
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "resume-delivery", input: { query: "test" } }), answer()]);
+  const initial = await execute(supportAgent, model);
+  const approval = initial.events.find(e => e.type === "approval_required");
+  if (!approval || approval.type !== "approval_required") throw new Error("expected approval");
+  const result = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, {
+    store, driver: model, registry: initial.tools.tools, onEvent() { throw new Error("closed subscriber"); },
+  });
+  expect(result.stopReason).toBe("event_delivery_failed"); expect(initial.tools.run).not.toHaveBeenCalled();
+  expect((await store.history(result.runId, "demo")).status).toBe("failed");
+});

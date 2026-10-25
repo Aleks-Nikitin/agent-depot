@@ -11,6 +11,7 @@ export type RuntimeDependencies = {
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
 class PolicyBlock extends Error {}
+class EventDeliveryError extends Error {}
 function guard(condition: boolean, reason: string): asserts condition {
   if (!condition) throw new PolicyBlock(reason);
 }
@@ -29,9 +30,7 @@ export async function runAgent(options: {
     modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
-  const started = await deps.store.appendEvent(run.id, options.ownerId, { type: "run_started", payload: { agentId: config.id } });
-  await deps.onEvent?.(started);
-  return continueRun(run.id, options.ownerId, deps);
+  return continueRun(run.id, options.ownerId, deps, undefined, "run_started");
 }
 
 export async function resumeAgent(options: { approvalId: string; ownerId: string; approved: boolean }, deps: RuntimeDependencies) {
@@ -40,14 +39,13 @@ export async function resumeAgent(options: { approvalId: string; ownerId: string
 }
 
 export async function resumeClaimedRun(claim: Awaited<ReturnType<RunStore["claimApproval"]>>, ownerId: string, approved: boolean, deps: RuntimeDependencies) {
-  await deps.onEvent?.(claim.event);
   return continueRun(claim.approval.runId, ownerId, deps, {
     call: { toolCallId: claim.approval.toolCallId, toolId: claim.approval.toolId, input: claim.approval.input }, approved,
-  });
+  }, claim.event);
 }
 
 async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies,
-  decision?: { call: PendingCall; approved: boolean }): Promise<AgentRunResult> {
+  decision?: { call: PendingCall; approved: boolean }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
@@ -58,18 +56,31 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     ? AbortSignal.any([deps.signal, AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs))])
     : AbortSignal.timeout(Math.max(1, config.limits.timeoutMs - state.activeMs));
   const elapsed = () => { state.activeMs = previousActive + Date.now() - invocationStarted; };
+  let deliveryFailed = false;
+  const deliver = async (event: RunStep) => {
+    if (deliveryFailed) return;
+    try { await deps.onEvent?.(event); }
+    catch { deliveryFailed = true; throw new EventDeliveryError("event_delivery_failed"); }
+  };
+  // Once a pause/terminal state is durable, notification failure must not try to
+  // finalize that run a second time or consume a pending approval.
+  const deliverSettled = async (event: RunStep) => {
+    try { await deliver(event); } catch { /* Stored state/event can be replayed. */ }
+  };
   const emit = async (event: EventInput) => {
     const saved = await deps.store.appendEvent(runId, ownerId, event);
-    await deps.onEvent?.(saved);
+    await deliver(saved);
   };
   const save = async () => { elapsed(); version = await deps.store.saveCheckpoint(runId, ownerId, version, state); };
   const finish = async (status: "completed" | "blocked" | "failed", response: string | null, reason: string | null): Promise<AgentRunResult> => {
     elapsed();
     const event = await deps.store.finishRun(runId, ownerId, version, state, status, response, reason);
-    await deps.onEvent?.(event);
+    await deliverSettled(event);
     return { runId, status, response, stopReason: reason, usage: state.usage };
   };
   try {
+    if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
+    else if (openingEvent) await deliver(openingEvent);
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
     if (decision) guard(JSON.stringify(state.pending[0]) === JSON.stringify(decision.call), "approval_call_mismatch");
     while (true) {
@@ -94,7 +105,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
           if (!decision) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
-            await deps.onEvent?.(pause.event);
+            await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
@@ -164,6 +175,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       }
     }
   } catch (error) {
+    if (error instanceof EventDeliveryError) return finish("failed", null, "event_delivery_failed");
     if (error instanceof PolicyBlock) return finish("blocked", null, error.message);
     if (signal.aborted) return finish("failed", null, "interrupted_or_timeout");
     // Provider/tool exception text may contain credentials or sensitive response bodies.
