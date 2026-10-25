@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { RunStepSchema } from "@/lib/agents/contracts";
 import { eventFixtures } from "@/lib/agents/fixtures";
 import { buildScenario, scenarioKeys } from "@/lib/fixtures/scenarios";
-import { addEvents, approvalState, deriveTrace, emptyTrace } from "./reduce-events";
+import { addEvents, approvalState, deriveTrace, emptyTrace, describeModelStep } from "./reduce-events";
 
 describe("fixture scenarios", () => {
   it("are valid contract events with unique ids and contiguous sequences", () => {
@@ -62,7 +62,7 @@ describe("deriveTrace", () => {
   it("provider failure: failed with a safe reason and an unfinished model step", () => {
     const t = deriveTrace(buildScenario("providerFailure").events);
     expect(t).toMatchObject({ status: "failed", stopReason: "execution_failed", response: null });
-    expect(t.items[0]).toMatchObject({ kind: "model", status: "running" });
+    expect(t.items[0]).toMatchObject({ kind: "model", status: "failed" });
     expect(t.totals.errors).toBe(1);
   });
 
@@ -135,4 +135,18 @@ describe("approvalState", () => {
     expect(approvalState(a, Date.parse(a.expiresAt) - 1)).toBe("pending");
     expect(approvalState(a, Date.parse(a.expiresAt))).toBe("expired");
   });
+});
+
+it("does not leave a model or requested tool running after a terminal failure", () => {
+  const base = eventFixtures.success[0];
+  const trace = deriveTrace([
+    base,
+    { ...base, eventId: "model", sequence: 2, type: "model_started", payload: { step: 1 } },
+    { ...base, eventId: "tool", sequence: 3, type: "tool_requested", payload: { toolId: "knowledge_search", toolCallId: "call", input: {} } },
+    { ...base, eventId: "failed", sequence: 4, type: "run_failed", payload: { reason: "model_rate_limited" } },
+  ]);
+  expect(trace.items.find(item => item.kind === "model")).toMatchObject({ status: "failed" });
+  expect(trace.items.find(item => item.kind === "tool")).toMatchObject({ status: "failed", reason: "model_rate_limited" });
+  expect(describeModelStep(trace.items, 0)).toContain("quota");
+  expect(trace.totals.tokens).toBeNull();
 });

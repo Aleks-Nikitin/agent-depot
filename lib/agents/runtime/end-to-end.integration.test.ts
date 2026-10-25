@@ -1,3 +1,4 @@
+import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -13,6 +14,12 @@ const db = getDb();
 const runIds: string[] = [];
 const agentIds: string[] = [];
 beforeEach(() => {
+  // Exercise the generic review/resume protocol using a test-only reviewed
+  // writer. Production internal tickets are tested separately as immediate.
+  const lookup = runtimeRegistry.get.bind(runtimeRegistry);
+  vi.spyOn(runtimeRegistry, "get").mockImplementation(id => {
+    const tool = lookup(id); return tool?.id === "create_ticket" ? { ...tool, approvalExempt: false } : tool;
+  });
   vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.stubEnv("RUNTIME_API_TOKEN", "end-to-end-test-token-not-a-secret");
   vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "test-key-not-real");
@@ -156,4 +163,16 @@ it("runs builder-created versions and resumes the original snapshot across edits
   expect(next.at(-1)?.type).toBe("run_completed");
   const newRun = await new PrismaRunStore(db).loadRun(next[0].runId, "demo");
   expect(newRun.config.version).toBe(3);
+});
+
+it.each([[429, "model_rate_limited"], [400, "model_request_rejected"], [503, "model_unavailable"]])("persists a safe actionable model failure for HTTP %s", async (status, reason) => {
+  const saved = await agent(supportAgent);
+  const fetch = vi.fn(async () => Response.json({ error: { code: status, message: "PRIVATE provider body secret", status: "ERROR" } }, { status }));
+  vi.stubGlobal("fetch", fetch);
+  const events = await readEvents(await execute(request({ message: "Compare prices" }), { params: Promise.resolve({ id: saved.id }) }));
+  expect(events.at(-1)).toMatchObject({ type: "run_failed", payload: { reason } });
+  expect(JSON.stringify(events)).not.toContain("PRIVATE");
+  expect(fetch).toHaveBeenCalledOnce();
+  const history = await new PrismaRunStore(db).history(events[0].runId, "demo");
+  expect(history.stopReason).toBe(reason);
 });

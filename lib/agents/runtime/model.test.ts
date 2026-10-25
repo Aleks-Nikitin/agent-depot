@@ -101,3 +101,16 @@ it("keeps partial provider usage unknown instead of treating absent token counts
   const result = await createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [], new AbortController().signal);
   expect(result.inputTokens).toBe(12); expect(result.outputTokens).toBeNull();
 });
+it("does not advertise retired or disconnected tools to Gemini, and explains missing capabilities", async () => {
+  configure();
+  const fetch = vi.fn(async () => providerResponse([{ text: "Search is not connected." }]));
+  vi.stubGlobal("fetch", fetch);
+  const tool = demoRegistry.get("knowledge_search")!;
+  await createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [
+    tool, { ...tool, id: "send_email", retired: true }, { ...tool, id: "google_shopping", unavailable: () => "search_not_configured" },
+  ], new AbortController().signal);
+  const request = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  const body = JSON.parse(request[1].body as string);
+  expect(body.tools[0].functionDeclarations.map((t: { name: string }) => t.name)).toEqual(["knowledge_search"]);
+  expect(JSON.stringify(body.systemInstruction)).toContain("Live search is not connected");
+});

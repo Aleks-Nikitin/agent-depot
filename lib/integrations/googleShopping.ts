@@ -4,7 +4,7 @@ import { serpapiSearch } from "./serpapi";
 import type { Tool } from "./types"; // ← USE YOUR LINE
 
 const Input = z.object({ query: z.string().trim().min(1).max(500) }).strict();
-const Result = z.object({ title: z.string().optional(), price: z.string().optional(), source: z.string().optional(), link: z.string().optional() });
+const Result = z.object({ title: z.string().optional(), price: z.string().optional(), source: z.string().optional(), link: z.string().optional(), product_link: z.string().optional() });
 
 export const googleShopping: Tool = {
   id: "google_shopping",
@@ -19,7 +19,7 @@ export const googleShopping: Tool = {
         return { source: "google_shopping", cached: true, demo: true, query, count: fixture.length, results: fixture };
       }
       const { data, cached } = await serpapiSearch("google_shopping", { q: query }, context?.signal);
-      if (data && typeof data === "object" && "error" in data) throw new Error("search_unavailable");
+      if (data && typeof data === "object" && "error" in data) throw new Error(String(data.error));
       const results = z.object({ shopping_results: z.array(Result).default([]) }).parse(data).shopping_results;
       return {
         source: "google_shopping",
@@ -30,11 +30,11 @@ export const googleShopping: Tool = {
           title: r.title,
           price: r.price,
           seller: r.source,
-          link: r.link,
+          link: r.product_link ?? r.link,
         })),
       };
     } catch (e) {
-      return { error: e instanceof Error ? e.message : "google_shopping failed" };
+      return { error: e instanceof z.ZodError ? "search_response_invalid" : e instanceof Error ? e.message : "google_shopping failed" };
     }
   },
 };

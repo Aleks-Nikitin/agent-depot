@@ -1,3 +1,4 @@
+import { toolLabel } from "@/lib/agents/tool-labels";
 import type { ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 import { AlertIcon, BanIcon, CheckIcon } from "@/components/ui/icons";
@@ -34,7 +35,7 @@ export function ModelStepCard({ item, step, model, description, collapsed }: {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <StepLabel tone="model" step={step} kind="Model" name={model} />
         <Meta>
-          {item.status === "running" ? "running…"
+          {item.status === "failed" ? "stopped · usage unknown" : item.status === "running" ? "running…"
             : `${formatTokens(item.tokens)} · ${formatCost(item.usage?.estimatedCostUsd)} · ${formatDuration(item.durationMs)}`}
         </Meta>
       </div>
@@ -49,7 +50,7 @@ export function ToolStepCard({ item, step, collapsed }: { item: ToolItem; step: 
       <Shell tone="error" className="bg-(--ad-error-bg)/40">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <StepLabel tone="error" step={step} kind="Error" />
-          <span className="ad-mono text-sm text-(--ad-error)">{item.toolId}</span>
+          <span className="ad-mono text-sm text-(--ad-error)">{toolLabel(item.toolId)}</span>
           <Meta>{formatDuration(item.durationMs)}</Meta>
         </div>
         {!collapsed && (
@@ -66,9 +67,9 @@ export function ToolStepCard({ item, step, collapsed }: { item: ToolItem; step: 
     <Shell>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <StepLabel tone="tool" step={step} kind="Tool" />
-        <span className="ad-mono text-sm">{item.toolId}</span>
+        <span className="ad-mono text-sm">{toolLabel(item.toolId)}</span>
         <Meta>{running ? "running…" : formatDuration(item.durationMs)}</Meta>
-        {item.authorization === "policy" && <span className="text-xs text-(--ad-model)">Automatic · saved policy</span>}
+        {item.authorization === "policy" && <span className="text-xs text-(--ad-model)">{item.toolId === "create_ticket" ? "Created immediately" : "Automatic · saved policy"}</span>}
       </div>
       {!collapsed && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2">

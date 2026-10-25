@@ -1,5 +1,6 @@
 "use client";
 
+import { toolLabel } from "@/lib/agents/tool-labels";
 import { useMemo, useState, useTransition, useEffect } from "react";
 import { useSession } from "@/lib/auth-client";
 import { Dialog } from "@/components/ui/dialog";
@@ -109,12 +110,12 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
       workspaceName: companyName.trim(),
       instructions: instructions.trim(),
       model: "gemini" as const,
-      enabledTools: [...tools],
+      enabledTools: [...tools].filter(id => catalog.some(tool => tool.id === id)),
       requireWriteApproval,
       limits: { ...initial?.config.limits, maxModelCalls: maxCalls, maxWriteCalls: maxWrites, maxEstimatedCostUsd: costCap },
       ...(mode === "create" && suggestedTests.length ? { testCases: suggestedTests } : {}),
     }),
-    [name, companyName, instructions, tools, requireWriteApproval, maxCalls, maxWrites, costCap, mode, suggestedTests, initial],
+    [catalog, name, companyName, instructions, tools, requireWriteApproval, maxCalls, maxWrites, costCap, mode, suggestedTests, initial],
   );
 
   const specYaml = useMemo(
@@ -252,7 +253,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
           setCompanyName(next); if (name === `${old}'s Customer Support`) setName(`${next}'s Customer Support`);
           setInstructions(text => text.replaceAll(`${old}'s`, `${next}'s`));
         }} className="mt-2 block w-full rounded-md border border-white/15 bg-black/30 px-3 py-2" /><span className="mt-2 block text-xs text-zinc-400">Used by starter templates. Edit the agent name and instructions as needed.</span></label>
-        <label className="mb-6 flex items-start gap-3 text-sm"><input type="checkbox" checked={requireWriteApproval} onChange={event => setRequireWriteApproval(event.target.checked)} /><span>Require human approval for writes<span className="mt-1 block text-xs text-zinc-400">Off: supported tools execute automatically within server restrictions and the per-run write limit. Unsupported writes still need approval.</span></span></label>
+        <label className="mb-6 flex items-start gap-3 text-sm"><input type="checkbox" checked={requireWriteApproval} onChange={event => setRequireWriteApproval(event.target.checked)} /><span>Require review for other write tools<span className="mt-1 block text-xs text-zinc-400">Internal tickets always create immediately, even when this option is on. This policy applies to any other write tools added later. Tests never execute writes.</span></span></label>
         {/* Templates */}
         <section className="mb-6">
           <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
@@ -337,30 +338,31 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
             <div>
               <label className="text-sm font-medium">Tools</label>
               <p className="text-xs text-zinc-500">
-                Write tools follow the saved policy and server-side restrictions. Tests always deny writes.
+                Tickets are created immediately and appear in Tools & knowledge. No external messages are sent. Tests never execute writes.
               </p>
+              {tools.has("send_email") && <p className="mt-2 text-sm text-amber-300">Email has been removed because it did not deliver messages. Saving removes it from this agent. Internal support tickets remain available.</p>}
               <div className="mt-2 space-y-2">
                 {catalog.map((tool) => (
                   <label
-                    key={tool.id}
+                    key={toolLabel(tool.id)}
                     className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[0.02] p-3 hover:border-white/25"
                   >
                     <input
                       type="checkbox"
+                      disabled={!!tool.unavailableReason && !tools.has(tool.id)}
                       checked={tools.has(tool.id)}
                       onChange={() => toggleTool(tool.id)}
                       className="mt-1"
                     />
                     <span className="flex-1">
                       <span className="flex items-center gap-2 font-mono text-sm">
-                        {tool.id}
-                        {tool.requiresApproval && (
-                          <span title="Write action">↗</span>
-                        )}
+                        {toolLabel(tool.id)}
+                        {tool.kind === "write" && <span className="text-xs font-sans text-sky-300">{tool.id === "create_ticket" ? "Creates immediately" : requireWriteApproval ? "Asks for approval" : "Runs automatically"}</span>}
                       </span>
                       <span className="block text-xs text-zinc-400">
-                        {tool.description}{tool.deliveryMode && <span className="ml-2 text-sky-300">(record only; no delivery)</span>}
+                        {tool.description}
                       </span>
+                      {tool.unavailableReason && <span className="mt-2 block text-xs text-amber-300">{"Not connected: ask the administrator to set SERPAPI_API_KEY for live search."}</span>}
                       {reasons[tool.id] && (
                         <span className="mt-1 block text-xs text-sky-300">
                           Gemini: {reasons[tool.id]}
@@ -439,7 +441,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
             <h2 className="text-sm font-medium">Publish</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              Publishing marks a revision as released after its saved checks pass.
+              You can run this saved agent in Playground immediately. Publishing marks a tested revision as released; it does not unlock tickets or tool execution.
             </p>
             <Link href={`/agents/${detail.id}/tests`} className="mt-3 inline-block text-sm text-sky-300 underline">Run tests and publish this version</Link>
             <p className="mt-2 text-xs text-zinc-400">Publish checks the latest saved results for this version and its current test definitions.</p>

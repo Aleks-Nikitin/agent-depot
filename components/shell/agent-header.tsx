@@ -1,3 +1,5 @@
+import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
+import { describeReason } from "@/lib/runs/format";
 import { notFound } from "next/navigation";
 import { io } from "next/cache";
 import { Pill } from "@/components/ui/pill";
@@ -13,9 +15,11 @@ export async function getAgentHeader(id: string): Promise<AgentHeaderData> {
   let a;
   try { a = await getAgent(await pageOwner(), id); }
   catch (error) { if (error instanceof Error && error.message === "agent_not_found") notFound(); throw error; }
-  return { id: a.id, name: a.name, version: a.version, publishedVersion: a.publishedVersion,
+  const selected = a.config.enabledTools.map(id => runtimeRegistry.get(id));
+  const toolWarnings = [...new Set(selected.flatMap(tool => tool?.retired ? [describeReason("email_removed")] : tool?.unavailable?.() ? [describeReason(tool.unavailable()!)] : []))];
+  return { toolWarnings, id: a.id, name: a.name, version: a.version, publishedVersion: a.publishedVersion,
     status: a.published && a.publishedVersion === a.version ? "published" : "draft",
-    model: process.env.RUNTIME_MODEL_ID || a.config.model, toolCount: a.config.enabledTools.length,
+    model: process.env.RUNTIME_MODEL_ID || a.config.model, toolCount: selected.filter(tool => tool && !tool.retired && !tool.unavailable?.()).length,
     costCapUsd: a.config.limits.maxEstimatedCostUsd, maxModelCalls: a.config.limits.maxModelCalls };
 }
 
