@@ -1,48 +1,38 @@
+import { shoppingFixtures } from "./data/fixtures";
 import { z } from "zod";
-import type { Tool } from "./types";
+import { serpapiSearch } from "./serpapi";
+import type { Tool } from "./types"; // ← USE YOUR LINE
 
-const input = z
-  .object({
-    query: z.string().trim().min(1).max(200),
-  })
-  .strict();
+const Input = z.object({ query: z.string() });
 
 export const googleShopping: Tool = {
   id: "google_shopping",
-  description: "Search public shopping listings for comparable apparel prices.",
-  input,
+  description: "Find competitor prices for a product using Google Shopping.",
+  input: Input,
   kind: "read",
-  async run(args) {
-    const { query } = input.parse(args);
-    return {
-      source: "google_shopping_sample",
-      query,
-      results: [
-        {
-          title: "Canvas Utility Jacket — Field Khaki",
-          merchant: "Northline Outfitters",
-          price: 119.99,
-          currency: "USD",
-          rating: 4.6,
-          url: "https://shopping.example.com/listings/canvas-utility-jacket",
-        },
-        {
-          title: "Washed Canvas Work Jacket",
-          merchant: "Harbor & Thread",
-          price: 134.0,
-          currency: "USD",
-          rating: 4.4,
-          url: "https://shopping.example.com/listings/washed-canvas-work-jacket",
-        },
-        {
-          title: "Lightweight Utility Jacket",
-          merchant: "City Rail Apparel",
-          price: 98.5,
-          currency: "USD",
-          rating: 4.2,
-          url: "https://shopping.example.com/listings/lightweight-utility-jacket",
-        },
-      ],
-    };
+  run: async (args) => {
+    try {
+      const { query } = Input.parse(args);
+      const fixture = shoppingFixtures[query.toLowerCase()];
+      if (fixture) {
+        return { source: "google_shopping", cached: true, query, count: fixture.length, results: fixture };
+      }
+      const { data, cached } = await serpapiSearch("google_shopping", { q: query });
+      const results = (data as any)?.shopping_results ?? [];
+      return {
+        source: "google_shopping",
+        cached,
+        query,
+        count: Math.min(results.length, 5),
+        results: results.slice(0, 5).map((r: any) => ({
+          title: r.title,
+          price: r.price,
+          seller: r.source,
+          link: r.link,
+        })),
+      };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "google_shopping failed" };
+    }
   },
 };
