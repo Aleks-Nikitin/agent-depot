@@ -15,6 +15,19 @@ function providerResponse(parts: unknown[]) {
   return Response.json({ candidates: [{ content: { role: "model", parts }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 6, totalTokenCount: 18 } });
 }
+it.each([["SAFETY", "content-filter"], ["MALFORMED_FUNCTION_CALL", "error"], ["FINISH_REASON_UNSPECIFIED", "other"]])(
+  "preserves unsuccessful Google finish reason %s alongside returned calls", async (providerReason, expectedReason) => {
+    configure();
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+      candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "knowledge_search", args: { query: "returns" } } }] }, finishReason: providerReason }],
+      usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 6, totalTokenCount: 18 },
+    })));
+    const result = await createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [demoRegistry.get("knowledge_search")!], new AbortController().signal);
+    expect(result.finishReason).toBe(expectedReason);
+    expect(result.calls).toHaveLength(1);
+    expect(result.inputTokens).toBe(12);
+  },
+);
 it("round-trips the Google tool-call protocol without automatically executing tools", async () => {
   configure();
   const fetch = vi.fn(async () => providerResponse([{ functionCall: { name: "knowledge_search", args: { query: "returns" } } }]));
@@ -57,6 +70,21 @@ it("generates a structured draft through the installed Google/AI SDK adapters", 
   const result = await googleDraftGenerator("Support agent", [], new AbortController().signal);
   expect(result.draft).toEqual(draft);
   expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 6, estimatedCostUsd: 0.000024 });
+});
+it.each([
+  ["SAFETY", 6, "draft_model_incomplete"],
+  ["MALFORMED_FUNCTION_CALL", 6, "draft_model_incomplete"],
+  ["MAX_TOKENS", 6, "draft_output_limit"],
+  ["STOP", 2049, "draft_output_limit"],
+])("rejects an incomplete or oversized draft despite valid JSON (%s, %s tokens)", async (finishReason, outputTokens, reason) => {
+  configure();
+  const draft = { name: "Support", instructions: "Answer policy questions", model: "gemini", tools: [], assumptions: [], suggestedTests: [] };
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+    candidates: [{ content: { role: "model", parts: [{ text: JSON.stringify(draft) }] }, finishReason }],
+    usageMetadata: { promptTokenCount: 12, candidatesTokenCount: outputTokens, totalTokenCount: 12 + outputTokens },
+  })));
+  await expect(googleDraftGenerator("Support agent", [], new AbortController().signal)).rejects.toThrow(reason);
+  expect(fetch).toHaveBeenCalledOnce();
 });
 it("fails closed for missing model, credentials or pricing", () => {
   configure(); vi.stubEnv("RUNTIME_INPUT_USD_PER_MILLION", "");

@@ -174,6 +174,8 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       guard(state.usage.estimatedCostUsd <= config.limits.maxEstimatedCostUsd, "budget_limit");
       guard(turn.outputTokens! <= config.limits.maxOutputTokens, "output_limit");
       guard(turn.finishReason !== "length", "output_limit");
+      guard(turn.finishReason !== "content-filter", "model_content_filtered");
+      guard(turn.finishReason === undefined || turn.finishReason === "stop" || turn.finishReason === "tool-calls", "model_incomplete");
       if (turn.calls.length) {
         guard(turn.calls.length <= config.limits.maxToolCalls - state.toolCalls, "tool_limit");
         for (const call of turn.calls) {

@@ -31,6 +31,22 @@ function driver(turns: ModelTurn[]): ModelDriver {
       const next = turns.shift(); if (!next) throw new Error("no_scripted_turn"); return next;
     }) };
 }
+it("blocks filtered and unsuccessful model turns before tools or final answers are accepted", async () => {
+  for (const finishReason of ["content-filter", "error", "other", "interrupted"]) {
+    for (const turn of [answer("Partial provider answer"), request({ toolId: "knowledge_search", toolCallId: "filtered", input: { query: "test" } })]) {
+      const model = driver([{ ...turn, finishReason }]);
+      const { result, events, tools } = await execute(supportAgent, model);
+      expect(result.status).toBe("blocked");
+      expect(result.stopReason).toBe(finishReason === "content-filter" ? "model_content_filtered" : "model_incomplete");
+      expect(result.response).toBeNull();
+      expect(result.usage.inputTokens).toBe(10);
+      expect(result.usage.outputTokens).toBe(5);
+      expect(tools.run).not.toHaveBeenCalled();
+      expect(events.some(event => event.type === "tool_requested")).toBe(false);
+      expect(model.turn).toHaveBeenCalledOnce();
+    }
+  }
+});
 function registry() {
   const run = vi.fn(async () => ({ text: "fixture data" }));
   return { run, tools: createRegistry(["knowledge_search", "sales_lookup", "create_ticket"].map(id => ({

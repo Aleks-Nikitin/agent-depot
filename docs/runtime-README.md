@@ -133,6 +133,8 @@ The goal and trusted tool catalog go to Gemini using `generateText` with `Output
 
 Draft generation has a 30-second deadline, bounded input/output and a $0.05 estimated per-request model budget. Review the returned draft, then persist the configuration with a newly assigned ID, owner, and version.
 
+A draft must finish normally (`stop`) and stay within 2048 total output tokens. Valid JSON alone is insufficient: filtered, malformed, truncated or otherwise incomplete provider responses are rejected before the draft is returned. These checks also apply when the builder invokes the shared draft generator through its server action.
+
 ## Cost accounting and recovery limits
 
 Budget enforcement estimates input from UTF-8 serialized context/schema size plus margin and reserves bounded output before a model call. Actual usage replaces that reservation afterward. Missing/partial provider usage stops further spending; the Google adapter checks raw metadata because SDK normalization can otherwise turn absent fields into zeros. Interrupted/failed calls retain the reserved estimated cost with unknown token totals, since they may still be billed. Automatic billable retries are disabled.
@@ -140,6 +142,8 @@ Budget enforcement estimates input from UTF-8 serialized context/schema size plu
 This is an **estimated model budget**, not a guaranteed provider invoice ceiling. Reasoning is included in total output usage and cost. Only text and the selected provider profile are supported; no paid grounding, media generation, explicit cache storage or external paid tool charges are implied. Recheck pricing/profile assumptions before adding them.
 
 Run states are running, waiting_approval, completed, blocked and failed. Stable stop reasons include step_limit, tool_limit, budget_limit, usage_unknown, context_limit, output_limit and model_policy_changed. Interrupted/deadline-expired runs fail with interrupted_or_timeout; unexpected provider/tool failures use execution_failed rather than leaking exception content. An active event subscriber failure uses event_delivery_failed; already-persisted completion/approval-pause states remain authoritative even if their notification fails.
+
+The engine accepts normally finished text/tool turns (`stop` or `tool-calls`). Provider-filtered turns block with `model_content_filtered`; other unsuccessful finish reasons block with `model_incomplete`. Reported usage is persisted first, but partial text is not returned as a successful answer and included tool calls are not queued or executed. Truncation keeps the existing `output_limit` reason. Injected test drivers may omit a finish reason; the Google adapter always supplies the SDK's reason.
 
 Waiting approvals survive refresh/process replacement. Active operations honor cancellation where the underlying integration supports it; a non-cooperative side effect may finish after cancellation. A process crash can leave an active run marked running. This prototype does not include a lease/recovery worker and does not automatically replay crashed writes. External writes require integration-level idempotency or reconciliation; a database claim alone cannot guarantee exactly-once delivery.
 
@@ -200,3 +204,9 @@ The next batch binds approval decisions to exact calls, normalizes reviewed inpu
 The merged agent editor also needs `app/agents/[id]/loading.tsx`: this supplies the Suspense boundary around request-time parameters/database reads required by Cache Components. The production build verifies that route can prerender its loading shell while fetching fresh agent data.
 
 Batch verification on October 24, 2026: **26 unit tests and 28 PostgreSQL integration tests passed**, plus TypeScript, lint and one-off webpack production compilation. All five live Gemini smoke checks passed (aggregate estimated model cost **$0.001248**). Default Turbopack remains configured and still encounters the environment's CSS-worker port restriction.
+
+### Cancellation handoff and provider completion verification
+
+The next grouped batch verifies cancellation before/during an approval claim, and prevents unsuccessful provider turns from executing tools or completing answers. Protocol tests cover Google's filtered/malformed/unspecified finish reasons; drafting tests also reject truncated or oversized output containing valid JSON.
+
+Verified on October 24, 2026: **35 unit tests, 30 PostgreSQL integration tests, TypeScript and lint passed**. All five live Gemini smoke checks passed (aggregate estimated model cost **$0.001269**). Production compilation passed with the one-off webpack fallback; default Turbopack still hits the CSS-worker port permission error in this environment. No dependency, migration or request/event schema change was needed. Consumers may display the new `model_content_filtered` and `model_incomplete` stop reasons from existing blocked events.
