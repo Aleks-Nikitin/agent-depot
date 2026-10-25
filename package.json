@@ -22,6 +22,7 @@
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
     "runtime:smoke": "tsx scripts/check-runtime.ts",
+    "deploy:vultr": "bash scripts/deploy-vultr.sh"
     "metrics:setup": "tsx scripts/setup-runtime-metrics.ts",
     "metrics:check": "tsx scripts/check-runtime-metrics.ts",
     "metrics:test:up": "docker compose -f compose.timescale-test.yaml up -d --wait",
