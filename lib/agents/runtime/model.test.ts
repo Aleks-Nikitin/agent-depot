@@ -38,6 +38,18 @@ it("does not retry billable provider failures", async () => {
   await expect(createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [], new AbortController().signal)).rejects.toThrow();
   expect(fetch).toHaveBeenCalledOnce();
 });
+it("uses Gemini 3.1 minimal thinking and accounts for reasoning in output usage", async () => {
+  configure(); vi.stubEnv("RUNTIME_MODEL_ID", "gemini-3.1-flash-lite");
+  const fetch = vi.fn(async () => Response.json({
+    candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }],
+    usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 6, thoughtsTokenCount: 4, totalTokenCount: 22 },
+  }));
+  vi.stubGlobal("fetch", fetch);
+  const result = await createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [], new AbortController().signal);
+  expect(result.outputTokens).toBe(10);
+  const call = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(JSON.parse(call[1].body as string).generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal", includeThoughts: false });
+});
 it("generates a structured draft through the installed Google/AI SDK adapters", async () => {
   configure();
   const draft = { name: "Support", instructions: "Answer policy questions", model: "gemini", tools: [], assumptions: [], suggestedTests: [] };
@@ -51,4 +63,13 @@ it("fails closed for missing model, credentials or pricing", () => {
   expect(() => createGoogleDriver()).toThrow();
   configure(); vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
   expect(() => createGoogleDriver()).toThrow("model_credentials_missing");
+});
+it("keeps partial provider usage unknown instead of treating absent token counts as zero", async () => {
+  configure();
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({
+    candidates: [{ content: { role: "model", parts: [{ text: "Hello" }] }, finishReason: "STOP" }],
+    usageMetadata: { promptTokenCount: 12 },
+  })));
+  const result = await createGoogleDriver().turn(supportAgent, [{ role: "user", content: "test" }], [], new AbortController().signal);
+  expect(result.inputTokens).toBe(12); expect(result.outputTokens).toBeNull();
 });
