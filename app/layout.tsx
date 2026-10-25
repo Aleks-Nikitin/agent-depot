@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { EB_Garamond, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/auth/site-nav";
@@ -26,16 +27,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>
-        <script
-          // Apply the saved theme before paint so there's no flash or layout shift.
+      <body className="min-h-full flex flex-col bg-(--page-bg) text-(--page-fg)">
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
+          // Restore the theme before hydration; Next manages script execution.
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}",
+              "try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}",
           }}
         />
-      </head>
-      <body className="min-h-full flex flex-col bg-(--page-bg) text-(--page-fg)">
         <SiteNav />
         <main className="flex w-full flex-1 flex-col">{children}</main>
       </body>

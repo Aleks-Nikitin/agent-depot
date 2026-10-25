@@ -31,7 +31,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
     if (pending) return;
     setPending("github"); setError("");
     try {
-      const result = await signIn.social({ provider: "github", callbackURL, errorCallbackURL: "/auth?error=oauth" });
+      const result = await signIn.social({ provider: "github", callbackURL, errorCallbackURL: "/?authError=1" });
       if (result.error) { setError("Unable to start GitHub sign-in. Please try again."); setPending(null); }
     } catch { setError("Unable to start GitHub sign-in. Please try again."); setPending(null); }
   }

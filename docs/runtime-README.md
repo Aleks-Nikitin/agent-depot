@@ -260,3 +260,9 @@ Current verification: 102 unit tests, 60 PostgreSQL integration tests, TypeScrip
 ## Current tool reliability behavior
 
 See [internal actions](guarded-actions.md) for the current contract. The tool picker, playground warnings and model declarations distinguish connected tools from missing setup. New model/tool failures persist safe specific reasons, translated into recovery guidance in chat and history. Immediate tickets do not require publication or approval; evaluations still deny writes. No messaging provider or new migration is included. Earlier record-only email verification above describes historical behavior, not an available tool.
+
+## Gemini availability diagnostic — 2026-10-25
+
+The rotated key was loaded directly from the saved local environment (no inherited key, no surrounding whitespace). A minimal REST `generateContent` request to the configured `gemini-3.1-flash-lite` returned HTTP 503 / `UNAVAILABLE` with Google's high-demand message. The real runtime driver returned the same 503; a separate minimal SDK request timed out at 20 seconds. This reproduces the blocker independently of frontend styling, tool definitions, search or database operations. Key rotation does not resolve model capacity shortages; see [Google's API error guidance](https://ai.google.dev/gemini-api/docs/generate-content/api-errors?hl=en).
+
+A single direct probe of the code-supported `gemini-2.5-flash-lite` returned 404 / `NOT_FOUND` for this API access. No model switch, new provider, pricing change or automatic retry was introduced. A successful model response is still needed to confirm recovery. These observations describe the tested requests, not a claim that every Gemini model is unavailable.

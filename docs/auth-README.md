@@ -20,7 +20,7 @@ Configure these values in ignored `.env`:
 - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`: credentials for this application's GitHub OAuth app. Without both, email and guest authentication remain available but GitHub is disabled in the UI.
 - `RUNTIME_ALLOW_DEMO_TOKEN=false`: normal browser access uses database sessions. Never expose the existing runtime bearer token in browser code.
 
-GitHub OAuth app settings: **Homepage URL** `http://localhost:3000`; **Authorization callback URL** `http://localhost:3000/api/auth/callback/github`. The login/signup page is `/auth`. An OAuth app uses the provider's default `read:user` / `user:email` scopes; a GitHub App additionally needs permission to read email addresses. [Better Auth GitHub setup](https://better-auth.com/docs/authentication/github)
+GitHub OAuth app settings: **Homepage URL** `http://localhost:3000`; **Authorization callback URL** `http://localhost:3000/api/auth/callback/github`. Login/signup uses a dialog on the public landing; `/auth` redirects there. An OAuth app uses the provider's default `read:user` / `user:email` scopes; a GitHub App additionally needs permission to read email addresses. [Better Auth GitHub setup](https://better-auth.com/docs/authentication/github)
 
 Restart the server after changing auth settings; the server auth instance is initialized lazily and retained per process. Production requires an HTTPS `BETTER_AUTH_URL`, matching provider callbacks, its own secret and exact configured origin. No secrets use `NEXT_PUBLIC_*` or appear in this document.
 
@@ -71,3 +71,5 @@ The default **Turbopack dev server works on localhost:3000** after Prisma genera
 ## Public onboarding
 
 The root promotion, new-agent form and tools catalog are public. Saving a configuration, generating a Gemini draft, running tools and reading workspace records require a valid session. Clicking a protected builder action opens login/signup (including guest access) without clearing the form; OAuth restores a bounded tab-local draft. Agent lists, saved builders, runs, playgrounds, tests, versions and private knowledge remain owner-scoped. Guest sessions count as authenticated workspaces.
+
+After the landing/theme merge, `/auth` redirects to the public landing. Sign-in still uses the same embedded Better Auth form, methods, GitHub callback and isolated guest sessions. GitHub failures return to `/?authError=1`, which opens the themed login dialog with retry guidance. Public Build/Tools/template links require no session; Save/Draft and private actions retain their existing authorization.
