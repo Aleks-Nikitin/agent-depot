@@ -1,0 +1,97 @@
+/* AgentDepot "backlit geometry" tokens. Scoped to .ad so other screens keep their own styling. */
+.ad {
+  --ad-bg: #07080a;
+  --ad-surface: #0e1014;
+  --ad-raised: #15181d;
+  --ad-border: #22262d;
+  --ad-text: #e8ebf0;
+  --ad-muted: #9aa1ac;
+  --ad-ice: #e8ecf2;
+
+  --ad-model: #93aecb;
+  --ad-model-bg: rgba(147, 174, 203, 0.1);
+  --ad-model-border: rgba(147, 174, 203, 0.3);
+  --ad-tool: #b9a3cc;
+  --ad-tool-bg: rgba(185, 163, 204, 0.1);
+  --ad-tool-border: rgba(185, 163, 204, 0.3);
+  --ad-approval: #d2ae6a;
+  --ad-approval-bg: rgba(210, 174, 106, 0.12);
+  --ad-approval-border: rgba(210, 174, 106, 0.4);
+  --ad-error: #d88e84;
+  --ad-error-bg: rgba(216, 142, 132, 0.1);
+  --ad-error-border: rgba(216, 142, 132, 0.32);
+  --ad-success: #92c4a0;
+  --ad-success-bg: rgba(146, 196, 160, 0.1);
+  --ad-success-border: rgba(146, 196, 160, 0.3);
+
+  --ad-spectrum: linear-gradient(120deg, #3e6fd8 0%, #9b4fd8 38%, #dcd4f2 70%, #cdeee6 100%);
+
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  background: var(--ad-bg);
+  color: var(--ad-text);
+  font-family: var(--font-ad-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  color-scheme: dark;
+}
+
+/* PLACEHOLDER(P1): until Dev 1 adopts TopNav in the root layout, AgentDepot screens hide the
+   root header and full-width the root <main>. Scoped by :has(), so other pages are untouched. */
+body:has(.ad-workspace) { background: #07080a; }
+body:has(.ad-workspace) > header { display: none; }
+body:has(.ad-workspace) > main { max-width: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+
+.ad-mono {
+  font-family: var(--font-ad-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.ad :focus-visible {
+  outline: 2px solid var(--ad-ice);
+  outline-offset: 2px;
+}
+
+/* One faint corner bloom on the page background. */
+.ad-bloom {
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+  top: -240px;
+  right: -200px;
+  width: 720px;
+  height: 720px;
+  border-radius: 9999px;
+  background: radial-gradient(closest-side, rgba(155, 79, 216, 0.1), rgba(62, 111, 216, 0.05) 55%, transparent);
+  filter: blur(40px);
+}
+
+/* Spectral light leaking from behind a solid element. Decorative only, never status. */
+.ad-backlit {
+  position: relative;
+  isolation: isolate;
+}
+.ad-backlit::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ad-spectrum);
+  filter: blur(22px);
+  opacity: 0.38;
+  pointer-events: none;
+}
+.ad-backlit[data-edge="top"]::before { inset: -6px 12% 55% 12%; }
+.ad-backlit[data-edge="top-right"]::before { inset: -8px -8px 50% 45%; }
+.ad-backlit[data-edge="right"]::before { inset: 10% -8px 10% 60%; }
+.ad-backlit[data-edge="corner"]::before { inset: -5px -5px 40% 40%; filter: blur(7px); opacity: 0.7; }
+.ad-backlit[data-edge="all"]::before { inset: -4px; filter: blur(14px); opacity: 0.3; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ad-backlit[data-live="true"]::before { animation: ad-breathe 4s ease-in-out infinite; }
+}
+@keyframes ad-breathe {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.46; }
+}
