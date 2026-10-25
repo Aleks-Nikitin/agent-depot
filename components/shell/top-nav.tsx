@@ -8,7 +8,7 @@ import { AccountMenu } from "@/components/auth/account-menu";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 // Shared navigation for the signed-in workspace.
-export function TopNav({ workspace = "Personal workspace" }: { workspace?: string }) {
+export function TopNav() {
   const pathname = usePathname();
   // Playground / Tests follow the selected agent, otherwise open the agent chooser.
   const candidate = pathname.match(/^\/agents\/([^/]+)/)?.[1];
@@ -39,10 +39,6 @@ export function TopNav({ workspace = "Personal workspace" }: { workspace?: strin
           ))}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          <span className="hidden items-center gap-2 rounded-lg border border-(--ad-border) bg-(--ad-raised) px-3 py-1.5 text-[13px] xl:flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
-            {workspace}
-          </span>
           <ThemeToggle />
           <AccountMenu />
         </div>

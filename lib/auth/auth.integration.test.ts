@@ -1,6 +1,7 @@
+import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { getDb } from "../db/prisma";
 import { getAuth } from "../auth";
 import { GET as list, POST as create } from "../../app/api/agents/route";
@@ -30,6 +31,13 @@ async function events(response: Response) {
   if (result[0]?.runId) runIds.push(result[0].runId);
   return result;
 }
+// Keep authorization/approval tests focused on a generic reviewed writer.
+beforeEach(() => {
+  const lookup = runtimeRegistry.get.bind(runtimeRegistry);
+  vi.spyOn(runtimeRegistry, "get").mockImplementation(id => {
+    const tool = lookup(id); return tool?.id === "create_ticket" ? { ...tool, approvalExempt: false } : tool;
+  });
+});
 beforeAll(async () => {
   vi.stubEnv("BETTER_AUTH_SECRET", "integration-only-auth-secret-over-thirty-two-characters");
   vi.stubEnv("BETTER_AUTH_URL", origin);

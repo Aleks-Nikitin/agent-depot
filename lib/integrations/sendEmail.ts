@@ -9,38 +9,10 @@ const input = z
   })
   .strict();
 
-type RecordedEmail = {
-  status: "recorded";
-  messageId: string;
-  to: string;
-  subject: string;
-  body: string;
-  provider: "mock";
-  note: "recorded only, not sent";
-};
-
-const recordedEmails: RecordedEmail[] = [];
-
+// Retained only so historical saved IDs can be recognized and explained.
+// There is no record-only or external delivery executor anymore.
 export const sendEmail: Tool = {
-  id: "send_email",
-  description: "Send an outbound email. This is a write action and should be treated as side-effecting.",
-  input,
-  kind: "write",
-  async run(args) {
-    const { to, subject, body } = input.parse(args);
-    const recorded: RecordedEmail = {
-      status: "recorded",
-      messageId: `msg_acme_${String(recordedEmails.length + 1).padStart(4, "0")}`,
-      to,
-      subject,
-      body,
-      provider: "mock",
-      note: "recorded only, not sent",
-    };
-    recordedEmails.push(recorded);
-    return {
-      ...recorded,
-      recordedCount: recordedEmails.length,
-    };
-  },
+  id: "send_email", description: "Removed: email delivery is not supported. Use an internal support ticket instead.",
+  input, kind: "write",
+  async run() { throw new Error("email_removed"); },
 };

@@ -1,3 +1,4 @@
+import { modelFailureReason, toolFailureReason } from "./failures";
 import type { ModelMessage } from "ai";
 import { isDeepStrictEqual } from "node:util";
 import { AgentConfigSchema, RunRequestSchema, type AgentConfig, type AgentRunResult, type EventInput, type RunStep } from "../contracts";
@@ -12,6 +13,7 @@ export type RuntimeDependencies = {
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
 class PolicyBlock extends Error {}
+class ExecutionFailure extends Error {}
 class EventDeliveryError extends Error {}
 function guard(condition: boolean, reason: string): asserts condition {
   if (!condition) throw new PolicyBlock(reason);
@@ -28,7 +30,7 @@ export async function runAgent(options: {
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
   const state: Checkpoint = { schemaVersion: 1, messages: [{ role: "user", content: message }], pending: [], seenCallIds: [],
-    modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+    writeCalls: 0, modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
   return continueRun(run.id, options.ownerId, deps, undefined, "run_started");
@@ -110,32 +112,39 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
           addResult(state, call, { denied: true, reason: "write_denied" });
           state.pending.shift(); await save(); continue;
         }
-        const normalizedInput = selected.inputSchema.parse(call.input);
+        if (selected.retired) throw new ExecutionFailure("email_removed");
+        if (selected.unavailable?.()) throw new ExecutionFailure(selected.unavailable()!);
+        const parsedInput = selected.inputSchema.safeParse(call.input);
+        if (!parsedInput.success) throw new ExecutionFailure("invalid_tool_input");
+        const normalizedInput = parsedInput.data;
         if (callDecision?.approved) guard(isDeepStrictEqual(normalizedInput, callDecision.call.input), "approval_input_changed");
         // Display and checkpoint the executable arguments, including schema
         // defaults, before asking a person to approve the operation.
         call.input = normalizedInput;
         let writeApproved = false;
         if (selected.kind === "write") {
-          if (!callDecision) {
+          guard((state.writeCalls ?? 0) < config.limits.maxWriteCalls, "write_limit");
+          if (!callDecision && ((config.requireWriteApproval && !selected.approvalExempt) || !selected.automaticWrites || (selected.canAutoWrite ? !selected.canAutoWrite(call.input) : false))) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
             await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
+          state.writeCalls = (state.writeCalls ?? 0) + 1;
         }
         state.toolCalls++;
         await save();
-        await emit({ type: "tool_started", payload: call });
+        await emit({ type: "tool_started", payload: { ...call, authorization: selected.kind === "read" ? "read" : callDecision ? "human" : "policy" } });
         const started = Date.now();
         let output: unknown;
         try {
           output = await withCancellation(signal, () => dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
             context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
         } catch (error) {
-          await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason: "tool_execution_failed" } });
-          throw error;
+          const reason = toolFailureReason(error);
+          await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason } });
+          throw new ExecutionFailure(reason);
         }
         addResult(state, call, output); state.pending.shift(); await save();
         await emit({ type: "tool_finished", payload: { toolCallId: call.toolCallId, toolId: call.toolId, output, durationMs: Date.now() - started } });
@@ -156,7 +165,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       state.usage = { inputTokens: null, outputTokens: null, estimatedCostUsd: previousUsage.estimatedCostUsd! + reserved };
       state.modelCalls++; await save();
       await emit({ type: "model_started", payload: { step: state.modelCalls } });
-      const turn = await withCancellation(signal, () => deps.driver.turn(config, state.messages as ModelMessage[], tools, signal));
+      const turn = await withCancellation(signal, () => deps.driver.turn(config, state.messages as ModelMessage[], tools, signal)).catch(error => { throw new ExecutionFailure(modelFailureReason(error)); });
       signal.throwIfAborted();
       const usageKnown = turn.inputTokens !== null && turn.outputTokens !== null
         && Number.isFinite(turn.inputTokens) && Number.isFinite(turn.outputTokens)
@@ -194,6 +203,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     if (error instanceof EventDeliveryError) return finish("failed", null, "event_delivery_failed");
     if (error instanceof PolicyBlock) return finish("blocked", null, error.message);
     if (signal.aborted) return finish("failed", null, "interrupted_or_timeout");
+    if (error instanceof ExecutionFailure) return finish("failed", null, error.message);
     // Provider/tool exception text may contain credentials or sensitive response bodies.
     return finish("failed", null, "execution_failed");
   }

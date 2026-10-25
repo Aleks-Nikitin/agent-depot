@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { signIn, signUp } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 
-export default function AuthClientPage({ githubEnabled, callbackFailed, embedded = false }: { githubEnabled: boolean; callbackFailed: boolean; embedded?: boolean }) {
+export default function AuthClientPage({ githubEnabled, callbackFailed, embedded = false, onAuthenticated, callbackURL = "/" }: { githubEnabled: boolean; callbackFailed: boolean; embedded?: boolean; onAuthenticated?: () => void; callbackURL?: string }) {
   const router = useRouter();
   const [isSignIn, setIsSignIn] = useState(true);
   const [name, setName] = useState("");
@@ -19,10 +19,10 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
     setPending("email"); setError("");
     try {
       const result = isSignIn
-        ? await signIn.email({ email, password, callbackURL: "/" })
-        : await signUp.email({ name: name.trim(), email, password, callbackURL: "/" });
+        ? await signIn.email({ email, password, callbackURL })
+        : await signUp.email({ name: name.trim(), email, password, callbackURL });
       if (result.error) setError(isSignIn ? "Unable to sign in. Check your email and password." : "Unable to create an account. Check your details or sign in.");
-      else { router.replace("/"); router.refresh(); }
+      else { if (onAuthenticated) onAuthenticated(); else router.replace(callbackURL); router.refresh(); }
     } catch { setError("Authentication is unavailable. Please try again."); }
     finally { setPending(null); }
   }
@@ -31,7 +31,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
     if (pending) return;
     setPending("github"); setError("");
     try {
-      const result = await signIn.social({ provider: "github", callbackURL: "/", errorCallbackURL: "/auth?error=oauth" });
+      const result = await signIn.social({ provider: "github", callbackURL, errorCallbackURL: "/auth?error=oauth" });
       if (result.error) { setError("Unable to start GitHub sign-in. Please try again."); setPending(null); }
     } catch { setError("Unable to start GitHub sign-in. Please try again."); setPending(null); }
   }
@@ -42,7 +42,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
     try {
       const result = await signIn.anonymous();
       if (result.error) setError("Unable to start a guest workspace. Please try again.");
-      else { router.replace("/"); router.refresh(); }
+      else { if (onAuthenticated) onAuthenticated(); else router.replace(callbackURL); router.refresh(); }
     } catch { setError("Unable to start a guest workspace. Please try again."); }
     finally { setPending(null); }
   }
@@ -51,7 +51,7 @@ export default function AuthClientPage({ githubEnabled, callbackFailed, embedded
   return (
     <section className={embedded ? "w-full text-left" : "mx-auto my-10 w-full max-w-md rounded-3xl border border-(--ad-border) bg-(--ad-surface) p-8 shadow-xl"}>
       <h1 className="text-2xl font-semibold">{isSignIn ? "Welcome back" : "Create your account"}</h1>
-      <p className="mt-2 text-sm text-(--ad-muted)">{isSignIn ? "Sign in to build, test, and monitor your agents." : "Create your personal Agent Depot workspace."}</p>
+      <p className="mt-2 text-sm text-(--ad-muted)">{isSignIn ? "Sign in to save, run, test, and monitor your agents." : "Create your personal Agent Depot workspace."}</p>
       {error && <p role="alert" className="mt-5 rounded-xl border border-(--ad-error-border) bg-(--ad-error-bg) p-3 text-sm text-(--ad-error)">{error}</p>}
       <button type="button" onClick={github} disabled={!!pending || !githubEnabled}
         className="mt-6 w-full rounded-xl border border-white/20 px-4 py-3 font-medium hover:bg-(--ad-raised) disabled:cursor-not-allowed disabled:opacity-50">

@@ -16,7 +16,7 @@ const to = new Date(from.getTime() + 3_600_000);
 afterAll(async () => { await db.agentRun.deleteMany({ where: { id: { in: created } } }); await db.$disconnect(); });
 it("queries isolated hourly outcomes and known usage without exposing run contents", async () => {
   for (const [index, status] of (["completed", "blocked", "failed"] as const).entries()) {
-    const state: Checkpoint = { schemaVersion: 1, messages: [], pending: [], seenCallIds: [], modelCalls: 2, toolCalls: 1,
+    const state: Checkpoint = { schemaVersion: 1, messages: [], pending: [], seenCallIds: [], writeCalls: 0, modelCalls: 2, toolCalls: 1,
       usage: index === 2 ? { inputTokens: null, outputTokens: null, estimatedCostUsd: null }
         : { inputTokens: 10, outputTokens: 5, estimatedCostUsd: 0.001 },
       startedAt: Date.now(), activeMs: 100, approvalMode: "human", driverKey: "test" };

@@ -15,7 +15,8 @@ describe("shared integration contract", () => {
   it("rejects client policy overrides, unsafe limits and argument substitution", () => {
     expect(RunRequestSchema.safeParse({ message: "test", enabledTools: ["write"] }).success).toBe(false);
     expect(ApprovalRequestSchema.safeParse({ approved: true, input: {} }).success).toBe(false);
-    expect(AgentConfigSchema.safeParse({ ...supportAgent, requireWriteApproval: false }).success).toBe(false);
+    expect(AgentConfigSchema.safeParse({ ...supportAgent, requireWriteApproval: false }).success).toBe(true);
+    expect(RunRequestSchema.safeParse({ message: "test", requireWriteApproval: false }).success).toBe(false);
     expect(AgentConfigSchema.safeParse({ ...supportAgent, limits: { maxModelCalls: 100 } }).success).toBe(false);
   });
   it("shows approval decisions only after a matching request and never executes a rejected call", () => {

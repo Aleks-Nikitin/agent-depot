@@ -7,7 +7,7 @@ const Input = z.object({ url: z.httpUrl().max(2048).refine(value => { const url 
 
 export const readWebpage: Tool = {
   id: "read_webpage",
-  description: "Read the full text of a webpage.",
+  description: "Extract up to 4000 characters from a public webpage using SerpApi. Requires search configuration.",
   input: Input,
   kind: "read",
   run: async (args, context) => {
@@ -18,6 +18,7 @@ export const readWebpage: Tool = {
         return { source: "read_webpage", cached: true, demo: true, url, chars: fixture.length, text: fixture };
       }
       const { data, cached } = await serpapiSearch("extract", { url, mode: "scrape", include_markdown: "true" }, context?.signal);
+      if (data && typeof data === "object" && "error" in data) throw new Error(String(data.error));
       const parsed =
         z.object({ text_content: z.object({ full: z.string().optional(), markdown: z.string().optional() }) }).parse(data);
       const text = parsed.text_content.markdown ?? parsed.text_content.full;

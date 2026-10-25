@@ -16,7 +16,7 @@ export function KnowledgeManager({ initialDocs, samples }: { initialDocs: Docume
   }
   async function remove(id: string) {
     setBusy(true); setMessage(null);
-    try { const response = await fetch(`/api/knowledge/${encodeURIComponent(id)}`, { method: "DELETE" }); if (!response.ok) throw new Error(); setDocs(previous => previous.filter(doc => doc.id !== id)); }
+    try { const response = await fetch(`/api/knowledge/${encodeURIComponent(id)}`, { method: "DELETE" }); if (!response.ok) throw new Error(); setDocs(previous => previous.filter(doc => doc.id !== id)); setMessage("Document deleted. The next run uses the remaining workspace knowledge."); }
     catch { setMessage("Could not delete this document."); } finally { setBusy(false); }
   }
   return <div className="grid gap-6 lg:grid-cols-2">

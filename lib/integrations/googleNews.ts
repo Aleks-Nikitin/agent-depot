@@ -19,7 +19,7 @@ export const googleNews: Tool = {
         return { source: "google_news", cached: true, demo: true, query, results: fixture };
       }
       const { data, cached } = await serpapiSearch("google_news", { q: query }, context?.signal);
-      if (data && typeof data === "object" && "error" in data) throw new Error("search_unavailable");
+      if (data && typeof data === "object" && "error" in data) throw new Error(String(data.error));
       const results = z.object({ news_results: z.array(Result).default([]) }).parse(data).news_results;
       return {
         source: "google_news",
@@ -33,7 +33,7 @@ export const googleNews: Tool = {
         })),
       };
     } catch (e) {
-      return { error: e instanceof Error ? e.message : "google_news failed" };
+      return { error: e instanceof z.ZodError ? "search_response_invalid" : e instanceof Error ? e.message : "google_news failed" };
     }
   },
 };

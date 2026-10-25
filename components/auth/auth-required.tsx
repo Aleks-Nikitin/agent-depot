@@ -9,7 +9,7 @@ export function AuthRequired({ githubEnabled }: { githubEnabled: boolean }) {
   const [open, setOpen] = useState(true);
   return <section className="py-12 text-center">
     <h1 className="text-2xl font-semibold">Your agent workspace</h1>
-    <p className="mt-3 text-(--ad-muted)">Sign in, create an account, or continue as a guest to build and test agents.</p>
+    <p className="mt-3 text-(--ad-muted)">Sign in, create an account, or continue as a guest to save agents and access your private workspace.</p>
     <button type="button" onClick={() => setOpen(true)} className="mt-6 rounded-xl bg-(--ad-text) px-5 py-3 font-semibold text-(--ad-bg)">Log in / Sign up</button>
     <Dialog open={open} onClose={() => setOpen(false)} title="Log in / Sign up" className="max-h-[90vh] overflow-y-auto">
       <AuthClientPage githubEnabled={githubEnabled} callbackFailed={false} embedded />

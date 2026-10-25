@@ -9,6 +9,12 @@ export type ToolContext = {
 export type ToolDefinition = {
   id: string; description: string; kind: "read" | "write";
   inputSchema: z.ZodType;
+  outputSchema?: z.ZodType;
+  automaticWrites?: boolean;
+  approvalExempt?: boolean;
+  unavailable?: () => string | null;
+  retired?: boolean;
+  canAutoWrite?: (input: unknown) => boolean;
   run(input: unknown, context: ToolContext): Promise<unknown>;
 };
 export type ToolRegistry = ReadonlyMap<string, ToolDefinition>;
@@ -44,7 +50,8 @@ export async function dispatchTool(options: {
   const parsed = tool.inputSchema.parse(input);
   if (tool.kind === "write" && !options.writeApproved) throw new Error("approval_required");
   if (tool.kind === "write" && !isDeepStrictEqual(parsed, input)) throw new Error("approval_input_changed");
-  const result = await tool.run(parsed, context);
+  const rawResult = await tool.run(parsed, context);
+  const result = tool.outputSchema ? tool.outputSchema.parse(rawResult) : rawResult;
   context.signal.throwIfAborted();
   const json = JSON.stringify(result);
   if (json === undefined || Buffer.byteLength(json) > 32_768) throw new Error("invalid_tool_output");

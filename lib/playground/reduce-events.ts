@@ -1,13 +1,15 @@
 import type { RunStep, Usage } from "@/lib/agents/contracts";
+import { describeReason } from "@/lib/runs/format";
 import type { RunStatus } from "@/lib/runs/format";
 
 export type ModelItem = {
-  kind: "model"; id: string; sequence: number; step: number; status: "running" | "done";
+  kind: "model"; id: string; sequence: number; step: number; status: "running" | "done" | "failed";
   usage: Usage | null; tokens: number | null; durationMs: number | null;
 };
 export type ToolItem = {
   kind: "tool"; id: string; sequence: number; toolId: string; input: unknown;
   status: "requested" | "awaiting_approval" | "running" | "succeeded" | "failed" | "denied";
+  authorization?: "read" | "human" | "policy";
   output: unknown; reason: string | null; durationMs: number | null;
 };
 export type ApprovalItem = {
@@ -105,7 +107,7 @@ export function deriveTrace(input: RunStep[]): Trace {
         model.status = "done"; model.usage = e.payload; model.tokens = usageTokens(e.payload);
         model.durationMs = modelStartedAt ? elapsed(modelStartedAt, e.timestamp) : null; break;
       case "tool_requested": tool(e, e.payload); break;
-      case "tool_started": tool(e, e.payload).status = "running"; toolStartedAt.set(e.payload.toolCallId, e.timestamp); break;
+      case "tool_started": tool(e, e.payload).authorization = e.payload.authorization; tool(e, e.payload).status = "running"; toolStartedAt.set(e.payload.toolCallId, e.timestamp); break;
       case "tool_finished": {
         const t = tool(e, e.payload);
         t.status = "succeeded"; t.output = e.payload.output; t.durationMs = e.payload.durationMs; break;
@@ -151,6 +153,14 @@ export function deriveTrace(input: RunStep[]): Trace {
     : outcome ? (outcome.status === "completed" && rejectedAny ? "rejected" : outcome.status)
     : pendingApproval ? "waiting_approval" : "running";
 
+  if (outcome) {
+    for (const item of items) {
+      if (item.kind === "model" && item.status === "running") item.status = "failed";
+      if (item.kind === "tool" && ["requested", "running", "awaiting_approval"].includes(item.status)) {
+        item.status = "failed"; item.reason = outcome.reason ?? "execution_failed";
+      }
+    }
+  }
   // A model call that never finished in an ended run may still be billed: its usage is unknown, not zero.
   const models = items.filter((i): i is ModelItem => i.kind === "model" && (i.status === "done" || !!outcome));
   const modelTokens = models.reduce<number | null>((acc, m) => sum(acc, m.tokens), 0);
@@ -190,7 +200,11 @@ export function approvalState(item: ApprovalItem, now: number = Date.now()): App
 export function describeModelStep(items: TraceItem[], index: number): string {
   const m = items[index];
   if (m?.kind !== "model") return "";
-  if (m.status === "running") return "Thinking…";
+  if (m.status === "running") return "Waiting for Gemini’s response…";
+  if (m.status === "failed") {
+    const outcome = items.find((item): item is OutcomeItem => item.kind === "outcome");
+    return describeReason(outcome?.reason ?? "execution_failed");
+  }
   const after: TraceItem[] = [];
   for (let i = index + 1; i < items.length && items[i].kind !== "model"; i++) after.push(items[i]);
   const tools = [...new Set(after.filter((i): i is ToolItem => i.kind === "tool").map(t => t.toolId))];

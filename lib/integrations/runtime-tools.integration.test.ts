@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, expect, it } from "vitest";
 import { getDb } from "../db/prisma";
 import { supportAgent } from "../agents/fixtures";
-import { runAgent, resumeAgent } from "../agents/runtime/run-agent";
+import { runAgent } from "../agents/runtime/run-agent";
 import { PrismaRunStore } from "../agents/storage/prisma-store";
 import type { ModelDriver } from "../agents/runtime/model";
 import type { RunStep } from "../agents/contracts";
@@ -16,6 +16,7 @@ const runs: string[] = [];
 const config = { ...supportAgent, ownerId, enabledTools: [...runtimeRegistry.keys()] };
 const context = { ownerId, runId: "read-only", toolCallId: "read", idempotencyKey: "read", signal: AbortSignal.timeout(10_000) };
 afterAll(async () => {
+  await db.demoTicket.deleteMany({ where: { ownerId } });
   await db.knowledgeDocument.deleteMany({ where: { ownerId } });
   await db.agentRun.deleteMany({ where: { id: { in: runs } } });
   await db.$disconnect();
@@ -27,6 +28,9 @@ it("uses the shared registry and workspace knowledge without leaking another own
   await db.knowledgeDocument.create({ data: { ownerId, title: "Private policy", text: `${query} customers get a replacement.` } });
   const own = await dispatchTool({ config, registry: runtimeRegistry, toolId: "knowledge_search", input: { query }, context });
   expect(own).toHaveProperty("matches.length", 1);
+  expect(own).toMatchObject({ sample: false, dataKind: "workspace_documents" });
+  const absent = await dispatchTool({ config, registry: runtimeRegistry, toolId: "knowledge_search", input: { query: "unused jackets returns" }, context });
+  expect(absent).toMatchObject({ matches: [], sample: false });
   const other = await dispatchTool({ config: { ...config, ownerId: "another-owner" }, registry: runtimeRegistry,
     toolId: "knowledge_search", input: { query }, context: { ...context, ownerId: "another-owner" } });
   expect(other).toMatchObject({ matches: [] });
@@ -34,27 +38,32 @@ it("uses the shared registry and workspace knowledge without leaking another own
   expect(sales).toHaveProperty("rows.length", 3);
 });
 
-it("pauses and resumes recorded email through the guarded engine, and never records evaluation writes", async () => {
+it("creates an internal ticket immediately even for older review-enabled agents, but denies test writes", async () => {
   for (const evaluation of [false, true]) {
     let turn = 0;
-    const driver: ModelDriver = { key: "integration-driver", estimate: () => 0.00001, turn: async () => ++turn === 1
-      ? { text: "", messages: [], calls: [{ toolCallId: "email-1", toolId: "send_email", input: { to: "demo@example.test", subject: "Review", body: "Recorded demo only." } }], inputTokens: 1, outputTokens: 1 }
-      : { text: "Done", messages: [], calls: [], inputTokens: 1, outputTokens: 1 } };
+    const driver: ModelDriver = { key: "ticket-immediate", estimate: () => 0.00001, turn: async () => ++turn === 1
+      ? { text: "", messages: [], calls: [{ toolCallId: "ticket", toolId: "create_ticket", input: { subject: "Review order" } }], inputTokens: 1, outputTokens: 1 }
+      : { text: evaluation ? "Not created" : "Created", messages: [], calls: [], inputTokens: 1, outputTokens: 1 } };
     const events: RunStep[] = [];
-    const deps = { store: new PrismaRunStore(db), registry: runtimeRegistry, driver, onEvent: (event: RunStep) => { events.push(event); if (!runs.includes(event.runId)) runs.push(event.runId); } };
-    let result = await runAgent({ config, ownerId, message: "Record an email", approvalMode: evaluation ? "deny" : "human" }, deps);
-    expect(await db.recordedEmail.count({ where: { runId: result.runId } })).toBe(0);
-    if (!evaluation) {
-      expect(result.status).toBe("waiting_approval");
-      const approval = events.find(event => event.type === "approval_required");
-      if (approval?.type !== "approval_required") throw new Error("missing approval");
-      result = await resumeAgent({ ownerId, approvalId: approval.payload.approvalId, approved: true }, deps);
-      expect(await db.recordedEmail.count({ where: { runId: result.runId } })).toBe(1);
-      await expect(resumeAgent({ ownerId, approvalId: approval.payload.approvalId, approved: true }, deps)).rejects.toThrow("approval_unavailable");
-    }
+    const before = await db.demoTicket.count({ where: { ownerId } });
+    const result = await runAgent({ config, ownerId, message: "Create a support ticket", approvalMode: evaluation ? "deny" : "human" }, {
+      store: new PrismaRunStore(db), registry: runtimeRegistry, driver, onEvent: event => { events.push(event); if (!runs.includes(event.runId)) runs.push(event.runId); },
+    });
     expect(result.status).toBe("completed");
-    const saved = await db.agentRun.findUniqueOrThrow({ where: { id: result.runId } });
-    expect(saved.source).toBe(evaluation ? "test" : "playground");
-    expect(saved.agentVersion).toBe(config.version);
+    expect(events.some(event => event.type === "approval_required")).toBe(false);
+    expect(await db.demoTicket.count({ where: { ownerId } })).toBe(before + (evaluation ? 0 : 1));
+  }
+});
+
+it("retired email never executes, and write caps still stop repeated tickets", async () => {
+  for (const id of ["send_email", "create_ticket"]) {
+    let turn = 0;
+    const result = await runAgent({ config: { ...config, limits: { ...config.limits, maxWriteCalls: 1 } }, ownerId, message: "test policy" }, {
+      store: new PrismaRunStore(db), registry: runtimeRegistry,
+      driver: { key: "retired-cap", estimate: () => 0.00001, turn: async () => ({ text: "", messages: [], calls: [{ toolId: id, toolCallId: `c${++turn}`, input: id === "send_email" ? {} : { subject: "Review" } }], inputTokens: 1, outputTokens: 1 }) },
+      onEvent: event => { if (!runs.includes(event.runId)) runs.push(event.runId); },
+    });
+    expect(result).toMatchObject(id === "send_email" ? { status: "failed", stopReason: "email_removed" } : { status: "blocked", stopReason: "write_limit" });
+    expect(await db.recordedEmail.count({ where: { runId: result.runId } })).toBe(0);
   }
 });

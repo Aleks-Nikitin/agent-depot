@@ -2,7 +2,7 @@
 
 Next.js agent platform with Prisma ORM and PostgreSQL. The [Application integration guide](docs/integration-README.md) covers the connected builder, tools, live playground, tests, publishing, versions and dashboard. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
 
-See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. Signed-out visitors receive a login/signup popup before any agent, run, playground or test content is shown. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
+See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. The promotion, new-agent form and tools catalog are public. Saving, Gemini drafting, execution and private workspace data require a session; protected builder actions open login/signup without losing the form. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
 
 ## Start locally
 
@@ -47,7 +47,7 @@ Do not delete the Compose volume unless you intend to erase local data. PostgreS
 - `AgentRun`: immutable configuration snapshot, status, version, private checkpoint, final answer.
 - `RunEvent`: durable ordered events; unique event ID and run/sequence pair for history and monitoring.
 - `Approval`: exact stored tool arguments, expiry, and one recorded decision.
-- `DemoTicket`: a local write with a unique idempotency key for approval demonstrations.
+- `DemoTicket`: an immediate internal support ticket with a unique idempotency key.
 
 Run snapshots retain history independently of agent deletion/edits. Checkpoints remain server-only. The runtime storage adapter implements atomic pause/claim/finish operations against this schema.
 
@@ -78,3 +78,7 @@ The builder, six integration tools, live playground/approvals, saved history, Ev
 `npm run typecheck` regenerates Next.js route types before checking TypeScript, so new pages/layouts pulled from teammates are included without running a full build first.
 
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. Restart the dev server after regenerating Prisma. If a previously malformed package file causes a stale build error, stop the server and clear/preserve its generated `.next` cache before restarting.
+
+See [Guarded actions](docs/guarded-actions.md) for immediate support tickets, connected-tool requirements and actionable failure explanations. Email delivery and messaging integrations are not supported; evaluations always deny writes.
+
+For live competitor prices, news and webpage reading, set `SERPAPI_API_KEY` in the local `.env` and save it. Gemini still handles reasoning. Tools & knowledge shows connection setup; selecting a tool per agent controls its availability. Search results may include different package sizes and sellers, so compare equivalent units before treating a lower listed price as a better deal.

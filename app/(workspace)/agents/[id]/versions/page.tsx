@@ -1,3 +1,4 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { pageOwnerOrNull } from "@/lib/auth/session";
@@ -7,7 +8,7 @@ import { VersionsPanel } from "@/components/shell/versions-panel";
 import { toYaml } from "@/lib/agents/library/yaml";
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
-  const ownerId = await pageOwnerOrNull(); if (!ownerId) return null;
+  const ownerId = await pageOwnerOrNull(); if (!ownerId) return <AuthPrompt />;
   const { id } = await params;
   const agent = await getAgent(ownerId, id).catch(() => null); if (!agent) notFound();
   const rows = await getDb().agentVersion.findMany({ where: { agentId: id, agent: { ownerId } }, orderBy: { version: "desc" } });
