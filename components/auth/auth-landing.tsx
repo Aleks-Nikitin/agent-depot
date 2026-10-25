@@ -53,20 +53,20 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
     <div className="ad min-h-screen w-full overflow-x-hidden">
       <div className="ad-bloom" aria-hidden="true" />
       <main className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:py-16">
-        <section className="relative isolate overflow-hidden rounded-3xl border border-(--ad-border) bg-[radial-gradient(ellipse_at_85%_25%,#f4efe3_0%,#ece9e0_45%,#e3dccb_78%)] px-6 py-12 sm:px-10 lg:py-16">
+        <section className="relative isolate overflow-hidden rounded-3xl border border-(--ad-border) bg-[var(--ad-hero)] px-6 py-12 sm:px-10 lg:py-16">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -right-20 -top-28 h-96 w-96 rounded-full border border-[#b2552f1a] shadow-[0_0_110px_35px_#b2552f10]"
+            className="pointer-events-none absolute -right-20 -top-28 h-96 w-96 rounded-full border border-(--ad-border) shadow-[0_0_110px_35px_rgba(0,0,0,0.04)]"
           />
           <div className="relative grid items-center gap-10 lg:grid-cols-[1.2fr_1fr]">
             <div>
-              <p className="ad-mono text-[11px] uppercase tracking-[0.24em] text-[#b2552f]">
+              <p className="ad-mono text-[11px] uppercase tracking-[0.24em] text-[var(--ad-hero-accent)]">
                 AgentDepot / powered by Gemini
               </p>
               <h1 className="mt-5 max-w-xl text-4xl font-semibold leading-[1.12] tracking-tight text-(--ad-text) sm:text-5xl">
                 From an idea.
                 <br />
-                <span className="text-[#b2552f]">To an agent you can inspect.</span>
+                <span className="text-[var(--ad-hero-accent)]">To an agent you can inspect.</span>
               </h1>
               <p className="mt-5 max-w-lg text-sm leading-7 text-(--ad-muted)">
                 Give it a goal. Choose its tools. Test every revision, approve sensitive

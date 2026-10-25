@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
-/* Agent Depot ships a single dark theme to match the brand shell. */
+/* Page chrome outside the .ad workspace shell. Flips with the theme toggle. */
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --page-bg: #ece9e0;
+  --page-fg: #1c1a17;
+  --page-border: #cfc8b8;
+}
+
+html[data-theme="dark"] {
+  --page-bg: #07080a;
+  --page-fg: #e8ebf0;
+  --page-border: #22262d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-page-bg: var(--page-bg);
+  --color-page-fg: var(--page-fg);
+  --color-page-border: var(--page-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--page-bg);
+  color: var(--page-fg);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }

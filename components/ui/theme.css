@@ -25,6 +25,9 @@
   --ad-success-border: rgba(79, 122, 88, 0.3);
 
   --ad-spectrum: linear-gradient(120deg, #b2552f 0%, #d9a441 38%, #e7d9c4 70%, #cdeee6 100%);
+  --ad-hero: radial-gradient(ellipse at 85% 25%, #f4efe3 0%, #ece9e0 45%, #e3dccb 78%);
+  --ad-hero-accent: #b2552f;
+  --ad-bloom: radial-gradient(closest-side, rgba(178, 85, 47, 0.1), rgba(217, 164, 65, 0.06) 55%, transparent);
 
   position: relative;
   isolation: isolate;
@@ -34,6 +37,37 @@
   font-family: var(--font-ad-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   color-scheme: light;
+}
+
+/* Dark theme: same tokens, dark values. Toggled via data-theme on <html>. */
+html[data-theme="dark"] .ad {
+  --ad-bg: #07080a;
+  --ad-surface: #0e1014;
+  --ad-raised: #15181d;
+  --ad-border: #22262d;
+  --ad-text: #e8ebf0;
+  --ad-muted: #9aa1ac;
+  --ad-ice: #e8ecf2;
+  --ad-model: #93aecb;
+  --ad-model-bg: rgba(147, 174, 203, 0.1);
+  --ad-model-border: rgba(147, 174, 203, 0.3);
+  --ad-tool: #b9a3cc;
+  --ad-tool-bg: rgba(185, 163, 204, 0.1);
+  --ad-tool-border: rgba(185, 163, 204, 0.3);
+  --ad-approval: #d2ae6a;
+  --ad-approval-bg: rgba(210, 174, 106, 0.12);
+  --ad-approval-border: rgba(210, 174, 106, 0.4);
+  --ad-error: #d88e84;
+  --ad-error-bg: rgba(216, 142, 132, 0.1);
+  --ad-error-border: rgba(216, 142, 132, 0.32);
+  --ad-success: #92c4a0;
+  --ad-success-bg: rgba(146, 196, 160, 0.1);
+  --ad-success-border: rgba(146, 196, 160, 0.3);
+  --ad-spectrum: linear-gradient(120deg, #3e6fd8 0%, #9b4fd8 38%, #dcd4f2 70%, #cdeee6 100%);
+  --ad-hero: radial-gradient(ellipse at 85% 25%, #25455f 0%, #101d30 40%, #0c1220 75%);
+  --ad-hero-accent: #bfe0ff;
+  --ad-bloom: radial-gradient(closest-side, rgba(155, 79, 216, 0.1), rgba(62, 111, 216, 0.05) 55%, transparent);
+  color-scheme: dark;
 }
 
 .ad-mono {
@@ -56,7 +90,7 @@
   width: 720px;
   height: 720px;
   border-radius: 9999px;
-  background: radial-gradient(closest-side, rgba(178, 85, 47, 0.1), rgba(217, 164, 65, 0.06) 55%, transparent);
+  background: var(--ad-bloom);
   filter: blur(40px);
 }
 

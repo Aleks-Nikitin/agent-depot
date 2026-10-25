@@ -22,9 +22,19 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#ece9e0] text-[#1c1a17]">
+      <head>
+        <script
+          // Apply the saved theme before paint so there's no flash or layout shift.
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}",
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-(--page-bg) text-(--page-fg)">
         <SiteNav />
         <main className="flex w-full flex-1 flex-col">{children}</main>
       </body>

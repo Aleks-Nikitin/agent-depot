@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Backlit } from "@/components/ui/backlit";
 import { cn } from "@/components/ui/cn";
 import { AccountMenu } from "@/components/auth/account-menu";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 // Shared navigation for the signed-in workspace.
 export function TopNav({ workspace = "Personal workspace" }: { workspace?: string }) {
@@ -41,6 +42,7 @@ export function TopNav({ workspace = "Personal workspace" }: { workspace?: strin
           <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
           {workspace}
         </span>
+        <ThemeToggle />
         <AccountMenu />
       </nav>
     </header>
