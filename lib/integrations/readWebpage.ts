@@ -1,28 +1,34 @@
+import { webpageFixtures } from "./data/fixtures";
 import { z } from "zod";
-import type { Tool } from "./types";
+import { serpapiSearch } from "./serpapi";
+import type { Tool } from "./types"; // ← USE YOUR LINE
 
-const input = z
-  .object({
-    url: z.string().trim().url(),
-  })
-  .strict();
+const Input = z.object({ url: z.string().url() });
 
 export const readWebpage: Tool = {
   id: "read_webpage",
-  description: "Read and summarize the main text of a public webpage.",
-  input,
+  description: "Read the full text of a webpage.",
+  input: Input,
   kind: "read",
-  async run(args) {
-    const { url } = input.parse(args);
-    return {
-      source: "read_webpage_sample",
-      url,
-      title: "AcmeStore Care Guide — Canvas Utility Jacket",
-      text: [
-        "Spot-clean the Canvas Utility Jacket with a damp cloth.",
-        "Machine wash cold on a gentle cycle and hang dry to protect the hardware.",
-        "Do not bleach. A light steam press restores the collar after shipping.",
-      ].join(" "),
-    };
+  run: async (args) => {
+    try {
+      const { url } = Input.parse(args);
+      const fixture = webpageFixtures[url];
+      if (fixture) {
+        return { source: "read_webpage", cached: true, url, chars: fixture.length, text: fixture };
+      }
+      const { data, cached } = await serpapiSearch("extract", { url });
+      const text =
+        (data as any)?.text ?? (data as any)?.content ?? (data as any)?.extract ?? "";
+      return {
+        source: "read_webpage",
+        cached,
+        url,
+        chars: String(text).length,
+        text: String(text).slice(0, 4000),
+      };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "read_webpage failed" };
+    }
   },
 };
