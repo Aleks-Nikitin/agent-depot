@@ -119,6 +119,10 @@ curl http://localhost:3000/api/agents/draft \
 
 PostgreSQL allocates event sequences under row updates; unique run/sequence pairs preserve ordering. Optimistic checkpoint versions reject stale updates. Approval claims update pending/unexpired records and claim the waiting run in one transaction; simultaneous decisions cannot both resume it. Approval expires after 15 minutes. A stored call cannot be replaced through client-supplied arguments/history.
 
+Approval payloads contain schema-normalized inputs, including defaults and transformations, so the review shows the arguments that will execute. Each decision applies only to its stored call; it cannot authorize a later call even if registry read/write metadata changes while paused. Rejection still skips that call after reclassification. If a changed schema produces different arguments on resume, the run blocks with `approval_input_changed`; start a new run to review the new arguments.
+
+Builder edits and rollbacks create new configuration versions. A waiting run resumes its saved configuration snapshot; a new run loads the current version. Integration coverage creates through the builder store, edits during approval, resumes the original version, rolls back, and executes the restored version.
+
 Call `PrismaRunStore.history(runId, ownerId, afterSequence)` for safe history projection. It includes summary, usage and ordered events; it does not expose the checkpoint. Deduplicate events by event ID and retain sequence numbers across approval/resume. Browser history should not expose database checkpoints or raw model messages.
 
 The server-side evaluation runner calls `runAgent({ config, ownerId, message, approvalMode: "deny" }, dependencies)`. It gets the same `AgentRunResult` and events with no approval wait or write side effect. Playground bodies cannot select this execution mode. The HTTP layer and reusable engine are separate so tests do not require a browser/server loopback request.
@@ -138,6 +142,8 @@ This is an **estimated model budget**, not a guaranteed provider invoice ceiling
 Run states are running, waiting_approval, completed, blocked and failed. Stable stop reasons include step_limit, tool_limit, budget_limit, usage_unknown, context_limit, output_limit and model_policy_changed. Interrupted/deadline-expired runs fail with interrupted_or_timeout; unexpected provider/tool failures use execution_failed rather than leaking exception content. An active event subscriber failure uses event_delivery_failed; already-persisted completion/approval-pause states remain authoritative even if their notification fails.
 
 Waiting approvals survive refresh/process replacement. Active operations honor cancellation where the underlying integration supports it; a non-cooperative side effect may finish after cancellation. A process crash can leave an active run marked running. This prototype does not include a lease/recovery worker and does not automatically replay crashed writes. External writes require integration-level idempotency or reconciliation; a database claim alone cannot guarantee exactly-once delivery.
+
+Async `onEvent` callbacks share the run deadline. A stalled callback cannot keep an active run open indefinitely: timeout persists `interrupted_or_timeout` and prevents additional work. Already-persisted completion and approval pauses remain authoritative if delivery times out. Subscriber code should still honor cancellation for its own external work.
 
 ## Verification and current limits
 
@@ -184,3 +190,11 @@ Verified on October 24, 2026:
 These changes preserve the existing API request/event schemas, database schema, dependencies, and default Turbopack configuration. History remains available through the existing owner-scoped store API.
 
 Post-merge batch verification on October 24, 2026: **25 unit tests and 23 PostgreSQL integration tests passed**, together with TypeScript, lint and one-off webpack production compilation. All five live Gemini smoke checks passed again; the batch's aggregate model-cost estimate was **$0.001267**. No database migration, dependency change, or API schema change was required.
+
+### Builder integration and approval hardening
+
+The next batch binds approval decisions to exact calls, normalizes reviewed inputs, rejects schema drift, and bounds async event subscribers. It integrates the merged builder/versioning implementation from main (`f9455dc`), regenerates Prisma Client, and applies its `20261025000000_agent_versioning` migration. No new dependency or runtime API schema is introduced.
+
+The merged agent editor also needs `app/agents/[id]/loading.tsx`: this supplies the Suspense boundary around request-time parameters/database reads required by Cache Components. The production build verifies that route can prerender its loading shell while fetching fresh agent data.
+
+Batch verification on October 24, 2026: **26 unit tests and 28 PostgreSQL integration tests passed**, plus TypeScript, lint and one-off webpack production compilation. All five live Gemini smoke checks passed (aggregate estimated model cost **$0.001248**). Default Turbopack remains configured and still encounters the environment's CSS-worker port restriction.
