@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
@@ -11,24 +12,25 @@ import "@/components/ui/theme.css";
 const steps = [
   ["01", "Define the job", "Instructions + permitted tools", "Draft a spec with Gemini"],
   ["02", "Prove the behavior", "Saved checks + execution evidence", "Test before publishing"],
-  ["03", "Stay in control", "Approve writes + inspect history", "Every step leaves a trace"],
+  ["03", "Stay in control", "Bound actions + inspect history", "Every step leaves a trace"],
 ] as const;
 
 const features = [
   ["Draft with Gemini", "Describe a goal in plain language; Gemini proposes instructions, tools, and tests."],
-  ["Human-in-the-loop", "Sensitive writes pause for approval. Nothing risky runs without a person saying yes."],
+  ["Guarded actions", "Internal tickets create immediately within write limits. Inspect their inputs and outcomes in the trace."],
   ["Versioned configs", "Every save is a new version. Roll back instantly and publish only what passed its checks."],
   ["Full observability", "Every run leaves a trace: model steps, tool calls, cost, and outcome — all inspectable."],
 ] as const;
 
 const templates = [
-  ["Support template", "Answers grounded in your policies", "Knowledge search, manager-review approvals, and three saved checks."],
-  ["Pricing template", "Turn sales figures into decisions", "Prepared sales data, competitor lookup, and three saved checks."],
+  ["customer-support", "Support template", "Answers grounded in your policies", "Knowledge search, internal support tickets, and three saved checks."],
+  ["competitor-pricing-analyst", "Pricing template", "Turn sales figures into decisions", "Prepared sales data, competitor lookup, and three saved checks."],
 ] as const;
 
 export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const callbackFailed = useSearchParams().get("authError") === "1";
+  const [open, setOpen] = useState(callbackFailed);
   const [guestPending, setGuestPending] = useState(false);
 
   async function continueAsGuest() {
@@ -69,10 +71,12 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
                 <span className="text-[var(--ad-hero-accent)]">To an agent you can inspect.</span>
               </h1>
               <p className="mt-5 max-w-lg text-sm leading-7 text-(--ad-muted)">
-                Give it a goal. Choose its tools. Test every revision, approve sensitive
+                Give it a goal. Choose its tools. Test every revision, bound tool
                 actions, and follow every execution in one workspace.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
+                <Link href="/agents/new" className="rounded-lg bg-(--ad-text) px-4 py-2 text-sm font-medium text-(--ad-bg)">Build an agent</Link>
+                <Link href="/tools" className="rounded-lg border border-(--ad-border) px-4 py-2 text-sm font-medium">Explore tools →</Link>
                 <Button variant="primary" onClick={() => setOpen(true)}>
                   Sign in / Sign up
                 </Button>
@@ -81,7 +85,7 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
                 </Button>
               </div>
               <p className="mt-5 text-xs text-(--ad-muted)">
-                Reusable configurations · Human approvals · Saved execution traces
+                Reusable configurations · Guarded automation · Saved execution traces
               </p>
             </div>
             <div aria-label="Agent workflow" className="relative space-y-3 lg:pl-5">
@@ -125,16 +129,16 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
             Start from a template
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {templates.map(([tag, title, body]) => (
-              <button
-                key={tag}
-                onClick={() => setOpen(true)}
+            {templates.map(([key, tag, title, body]) => (
+              <Link
+                key={key}
+                href={`/agents/new?template=${key}`}
                 className="rounded-xl border border-(--ad-border) p-5 text-left transition-colors hover:bg-(--ad-raised)"
               >
                 <p className="ad-mono text-[10px] uppercase tracking-widest text-(--ad-model)">{tag}</p>
                 <h3 className="mt-2 font-semibold text-(--ad-text)">{title}</h3>
-                <p className="mt-2 text-sm text-(--ad-muted)">{body} Sign in to start →</p>
-              </button>
+                <p className="mt-2 text-sm text-(--ad-muted)">{body} Explore template →</p>
+              </Link>
             ))}
           </div>
         </section>
@@ -162,7 +166,7 @@ export function AuthLanding({ githubEnabled }: { githubEnabled: boolean }) {
         title="Log in / Sign up"
         className="max-h-[90vh] overflow-y-auto"
       >
-        <AuthClientPage githubEnabled={githubEnabled} callbackFailed={false} embedded />
+        <AuthClientPage githubEnabled={githubEnabled} callbackFailed={callbackFailed} embedded />
       </Dialog>
     </div>
   );
