@@ -23,8 +23,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${serif.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          // Apply the saved theme before paint so there is no flash and no shift.
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}",
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <Nav />
         <main className="mx-auto w-full max-w-[1200px] flex-1 px-6 py-8">

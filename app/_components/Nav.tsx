@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeToggle from "./ThemeToggle";
 
 const links = [
   { href: "/", label: "Agents" },
@@ -48,9 +49,12 @@ export default function Nav() {
           })}
         </div>
 
-        <div className="ml-auto flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-success" />
-          <span className="mono text-[11px] text-muted">demo</span>
+        <div className="ml-auto flex items-center gap-3">
+          <ThemeToggle />
+          <div className="flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+            <span className="mono text-[11px] text-muted">demo</span>
+          </div>
         </div>
       </nav>
     </header>

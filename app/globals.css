@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Agent Depot — warm editorial "paper" theme (cream, serif, terracotta). */
+/* Agent Depot — warm editorial "paper" theme (cream, serif, terracotta).
+   Only color tokens change between themes, so switching never shifts layout. */
 :root {
   --paper: #ece9e0;
   --panel: #f3f1ea;
@@ -10,6 +11,17 @@
   --line: #cfc8b8;
   --accent: #b2552f;
   --success: #5f7a52;
+}
+
+html[data-theme="dark"] {
+  --paper: #16130f;
+  --panel: #1e1a15;
+  --raised: #27211a;
+  --ink: #ece7dc;
+  --muted: #9a9081;
+  --line: #342c22;
+  --accent: #cd6a41;
+  --success: #86a173;
 }
 
 @theme inline {
