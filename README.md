@@ -80,3 +80,5 @@ The builder, six integration tools, live playground/approvals, saved history, Ev
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. Restart the dev server after regenerating Prisma. If a previously malformed package file causes a stale build error, stop the server and clear/preserve its generated `.next` cache before restarting.
 
 See [Guarded actions](docs/guarded-actions.md) for immediate support tickets, connected-tool requirements and actionable failure explanations. Email delivery and messaging integrations are not supported; evaluations always deny writes.
+
+For live competitor prices, news and webpage reading, set `SERPAPI_API_KEY` in the local `.env` and save it. Gemini still handles reasoning. Tools & knowledge shows connection setup; selecting a tool per agent controls its availability. Search results may include different package sizes and sellers, so compare equivalent units before treating a lower listed price as a better deal.
