@@ -38,12 +38,14 @@ export function TopNav({ workspace = "Personal workspace" }: { workspace?: strin
             </Link>
           ))}
         </div>
-        <span className="ml-auto hidden shrink-0 items-center gap-2 rounded-lg border border-(--ad-border) bg-(--ad-raised) px-3 py-1.5 text-[13px] xl:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
-          {workspace}
-        </span>
-        <ThemeToggle />
-        <AccountMenu />
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <span className="hidden items-center gap-2 rounded-lg border border-(--ad-border) bg-(--ad-raised) px-3 py-1.5 text-[13px] xl:flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-(--ad-model)" aria-hidden="true" />
+            {workspace}
+          </span>
+          <ThemeToggle />
+          <AccountMenu />
+        </div>
       </nav>
     </header>
   );

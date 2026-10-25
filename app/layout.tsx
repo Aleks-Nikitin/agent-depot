@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Playfair_Display, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/auth/site-nav";
 
-const geistSans = Geist({
+const geistSans = Playfair_Display({
   variable: "--font-geist-sans",
+  style: ["normal", "italic"],
   subsets: ["latin"],
 });
 
