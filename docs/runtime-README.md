@@ -13,10 +13,12 @@ Main's playground UI and runtime diagnostics merges are integrated through `e1c3
 Three integration gates remain outside the completed core engine:
 
 1. **Playground and evaluations:** wire authenticated browser requests to execution/approval, replace history fixtures with owner-scoped reads, and connect the test runner. Runtime interfaces are available below; session ownership and the UI's backend phase need coordinated integration.
-2. **Optional hosted Tiger verification:** establish external connectivity, apply setup, and prove an application-originated metric write/read and monitoring read. Current probes time out before TLS. Local TimescaleDB success is not hosted verification. The existing Tiger selector changes the entire primary database; an independently optional analytics destination would require a separate export design and is not implemented.
+2. **Optional hosted Tiger verification:** establish external connectivity, apply setup, and prove an application-originated metric write/read and monitoring read. The HeavyFuel URL-specific SSL compatibility option was applied on request, but both strict TCP diagnostics and the actual `pg` client still time out before TLS. Local TimescaleDB success is not hosted verification. The existing Tiger selector changes the entire primary database; an independently optional analytics destination would require a separate export design and is not implemented.
 3. **Deployment:** verify the deployed authentication boundary, streaming, approval/resume and database migrations. Local compilation and tests do not establish deployment success.
 
-The latest combined-tree checks passed **68 unit tests, 34 PostgreSQL integration tests, typecheck and lint**. Production compilation passed using the documented one-off webpack fallback. The earlier isolated TimescaleDB suite passed **35 integration tests**; it has not been rerun with the UI merge because no metrics/storage code changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures are not included in that live claim.
+The analytics endpoint follow-up passed **68 unit tests, 37 PostgreSQL integration tests, typecheck, lint and production compilation** using the documented one-off webpack fallback. The earlier isolated TimescaleDB suite passed **35 integration tests**; its SQL/setup has not changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures are not included in that live claim.
+
+The runtime now exposes authenticated hourly analytics through `GET /api/runtime/metrics`. It returns owner-scoped outcome, active-duration, model/tool, token and estimated-cost aggregates from PostgreSQL or the configured Timescale view. See the metrics document for query parameters and authentication. This fills the analytics HTTP read boundary; it does not switch the fixture-backed dashboard to live data.
 
 `npm run typecheck` now runs `next typegen` before `tsc --noEmit`. This refreshes generated `PageProps`/`LayoutProps` route definitions after pulling new pages/layouts, without requiring a production build. No dependency or bundler change is involved.
 
@@ -63,6 +65,10 @@ Gemini 3.1 Flash-Lite supports function calling and structured output. Its adapt
 The server-selected model, rates and execution-profile version form a fingerprint stored in the checkpoint. Changing them while a run waits causes a policy stop on resume instead of silently changing its accounting/execution rules.
 
 ## Execution flow and critical decisions
+
+For example, a support agent receives “Can I return this after 20 days?” The engine loads its saved instructions and permitted tools, asks Gemini what to do, validates a `knowledge_search` call, runs it, and gives the result back to Gemini for the final answer. A sales agent follows the same loop with `sales_lookup` enabled instead. Each stage saves an ordered event that the playground can show later.
+
+If the agent requests `create_ticket`, the engine saves the exact proposed arguments and pauses. Approval resumes that same run and executes that call; rejection returns a denial to the model. Limits and estimated cost continue across resumes. At the end, PostgreSQL atomically saves the terminal state, final event and one metric row. Hourly analytics summarize those metric rows; optional TimescaleDB accelerates that query through a continuous aggregate. The current Docker database already supports the raw PostgreSQL analytics path.
 
 1. The route authenticates, bounds/validates the JSON body and resolves a saved agent using its verified owner.
 2. `runAgent()` snapshots configuration and policy, creates a run and records `run_started`.
