@@ -23,14 +23,14 @@ const recordedEmails: RecordedEmail[] = [];
 
 export const sendEmail: Tool = {
   id: "send_email",
-  description: "Send an outbound email. This is a write action and should be treated as side-effecting.",
+  description: "Record a sample email. Application execution uses the guarded persistent runtime adapter.",
   input,
   kind: "write",
   async run(args) {
     const { to, subject, body } = input.parse(args);
     const recorded: RecordedEmail = {
       status: "recorded",
-      messageId: `msg_acme_${String(recordedEmails.length + 1).padStart(4, "0")}`,
+      messageId: `msg_sample_${String(recordedEmails.length + 1).padStart(4, "0")}`,
       to,
       subject,
       body,

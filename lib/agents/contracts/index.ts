@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const LimitsSchema = z.object({
   maxModelCalls: z.number().int().min(1).max(10).default(5),
+  maxWriteCalls: z.number().int().min(1).max(5).default(2),
   maxToolCalls: z.number().int().min(1).max(20).default(10),
   maxEstimatedCostUsd: z.number().positive().max(1).default(0.05),
   maxOutputTokens: z.number().int().min(1).max(2048).default(512),
@@ -13,9 +14,10 @@ export const AgentConfigSchema = z.object({
   version: z.number().int().positive(),
   name: z.string().min(1).max(100),
   instructions: z.string().min(1).max(8000),
+  workspaceName: z.string().trim().min(1).max(80).optional(),
   model: z.literal("gemini"),
   enabledTools: z.array(z.string().min(1).max(100)).max(10),
-  requireWriteApproval: z.literal(true).default(true),
+  requireWriteApproval: z.boolean().default(true),
   limits: LimitsSchema.default(() => LimitsSchema.parse({})),
 }).strict();
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
@@ -38,7 +40,7 @@ export const RunStepSchema = z.discriminatedUnion("type", [
   envelope.extend({ type: z.literal("model_started"), payload: z.object({ step: z.number().int() }) }),
   envelope.extend({ type: z.literal("model_finished"), payload: UsageSchema }),
   envelope.extend({ type: z.literal("tool_requested"), payload: call }),
-  envelope.extend({ type: z.literal("tool_started"), payload: call }),
+  envelope.extend({ type: z.literal("tool_started"), payload: call.extend({ authorization: z.enum(["read", "human", "policy"]).optional() }) }),
   envelope.extend({ type: z.literal("tool_finished"), payload: z.object({ toolCallId: z.string(), toolId: z.string(), output: z.unknown(), durationMs: z.number().nonnegative() }) }),
   envelope.extend({ type: z.literal("tool_failed"), payload: z.object({ toolCallId: z.string(), toolId: z.string(), reason: z.string() }) }),
   envelope.extend({ type: z.literal("approval_required"), payload: call.extend({ approvalId: z.string(), expiresAt: z.iso.datetime() }) }),

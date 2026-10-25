@@ -93,7 +93,7 @@ function fuzzyNameMatch(catalog: Product[], query: string): Product[] {
 
 export const salesLookup: Tool = {
   id: "sales_lookup",
-  description: "Look up AcmeStore product names, categories, prices, and units sold.",
+  description: "Explore the prepared sample product sales dataset; these figures are illustrative, not actual store revenue.",
   input,
   kind: "read",
   async run(args) {
@@ -119,7 +119,7 @@ export const salesLookup: Tool = {
 
     const rows = matches.map(toRow);
     return {
-      source: "acme_sales",
+      source: "sample_sales", demo: true,
       currency: "USD",
       count: rows.length,
       query: query || null,

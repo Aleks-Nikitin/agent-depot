@@ -1,3 +1,4 @@
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { Suspense } from "react";
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: "Runs · AgentDepot" };
 
 async function RunsContent() {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return null;
+  if (!ownerId) return <AuthPrompt />;
   const { runs, now, nextCursor } = await listRuns(ownerId);
   return (
     <>

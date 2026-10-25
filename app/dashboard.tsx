@@ -14,6 +14,7 @@ import { PlusIcon } from "@/components/ui/icons";
 import type { RunSummary } from "@/lib/runs/queries";
 import { computeMetrics } from "@/lib/runs/metrics";
 import { formatCost, formatDuration } from "@/lib/runs/format";
+import { Promotion } from "@/components/marketing/promotion";
 import { WorkspaceShell } from "@/components/shell/workspace-shell";
 
 export default function Dashboard({ initialAgents, recentRuns }: { initialAgents: AgentSummary[]; recentRuns: RunSummary[] }) {
@@ -60,33 +61,13 @@ export default function Dashboard({ initialAgents, recentRuns }: { initialAgents
     <WorkspaceShell>
       <main className="flex-1 p-4 sm:p-6">
         <div className="mx-auto max-w-7xl space-y-8">
-          <section className="relative isolate overflow-hidden rounded-3xl border border-sky-300/20 bg-[radial-gradient(ellipse_at_85%_25%,#25455f_0%,#101d30_40%,#0c1220_75%)] px-6 py-10 sm:px-10 lg:py-14">
-            <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-28 h-96 w-96 rounded-full border border-sky-200/10 shadow-[0_0_110px_35px_#55c6ea10]" />
-            <div className="relative grid items-center gap-10 lg:grid-cols-[1.2fr_1fr]">
-              <div>
-                <p className="ad-mono text-[11px] uppercase tracking-[0.24em] text-sky-200">AgentDepot / powered by Gemini</p>
-                <h1 className="mt-5 max-w-xl text-4xl font-semibold leading-[1.12] tracking-tight text-white sm:text-5xl">From an idea.<br /><span className="text-sky-200">To an agent you can inspect.</span></h1>
-                <p className="mt-5 max-w-lg text-sm leading-7 text-slate-300">Give it a goal. Choose its tools. Test every revision, approve sensitive actions, and follow every execution in one workspace.</p>
-                <div className="mt-7 flex flex-wrap gap-3"><ButtonLink href="/agents/new" variant="primary"><PlusIcon size={14} /> Build an agent</ButtonLink><ButtonLink href="/tools" variant="secondary">Explore tools →</ButtonLink></div>
-                <p className="mt-5 text-xs text-slate-400">Reusable configurations · Human approvals · Saved execution traces</p>
-              </div>
-              <div aria-label="Agent workflow" className="relative space-y-3 lg:pl-5">
-                {([
-                  ["01", "Define the job", "Instructions + permitted tools", "Draft a spec with Gemini"],
-                  ["02", "Prove the behavior", "Saved checks + execution evidence", "Test before publishing"],
-                  ["03", "Stay in control", "Approve writes + inspect history", "Every step leaves a trace"],
-                ] as const).map(([number, title, description, caption]) => <div key={number} className="flex items-center gap-4 rounded-xl border border-sky-200/15 bg-slate-950/45 px-5 py-4 shadow-xl backdrop-blur-sm">
-                  <span className="ad-mono text-xs text-sky-300/70">{number}</span><div><h2 className="text-sm font-semibold text-white">{title}</h2><p className="mt-1 text-xs text-slate-400">{description}</p></div><span className="ml-auto hidden max-w-28 text-right text-[10px] text-sky-200/70 sm:block">{caption}</span>
-                </div>)}
-              </div>
-            </div>
-          </section>
+          <Promotion />
           <section aria-label="Workspace activity" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[["Saved agents", String(agents?.length ?? 0)], ["Recent executions", String(recentRuns.length)], ["Success rate", metrics.successRate === null ? "—" : `${Math.round(metrics.successRate * 100)}%`], ["Waiting for approval", String(metrics.pendingApprovals)]].map(([label, value]) => <Card key={label} className="p-5"><p className="text-xs text-(--ad-muted)">{label}</p><p className="ad-mono mt-3 text-2xl font-semibold">{value}</p></Card>)}
           </section>
           <p className="text-xs text-(--ad-muted)">Activity covers the latest {recentRuns.length} playground runs (up to 50). Success rate uses finished runs; test suites appear in Tests.</p>
           <section className="grid gap-4 sm:grid-cols-2" aria-label="Starter templates">
-            <Link href="/agents/new?template=acmestore-support" className="rounded-xl border border-(--ad-border) p-5 transition-colors hover:bg-(--ad-raised)"><p className="ad-mono text-[10px] uppercase tracking-widest text-(--ad-model)">Support template</p><h2 className="mt-2 font-semibold">Answers grounded in your policies</h2><p className="mt-2 text-sm text-(--ad-muted)">Knowledge search, manager-review approvals, and three saved checks. Start here →</p></Link>
+            <Link href="/agents/new?template=customer-support" className="rounded-xl border border-(--ad-border) p-5 transition-colors hover:bg-(--ad-raised)"><p className="ad-mono text-[10px] uppercase tracking-widest text-(--ad-model)">Support template</p><h2 className="mt-2 font-semibold">Answers grounded in your policies</h2><p className="mt-2 text-sm text-(--ad-muted)">Knowledge search, bounded support actions, and three saved checks. Start here →</p></Link>
             <Link href="/agents/new?template=competitor-pricing-analyst" className="rounded-xl border border-(--ad-border) p-5 transition-colors hover:bg-(--ad-raised)"><p className="ad-mono text-[10px] uppercase tracking-widest text-(--ad-model)">Pricing template</p><h2 className="mt-2 font-semibold">Turn sales figures into decisions</h2><p className="mt-2 text-sm text-(--ad-muted)">Prepared sales data, competitor lookup, and three saved checks. Start here →</p></Link>
           </section>
           <div className="flex flex-wrap items-end justify-between gap-4">

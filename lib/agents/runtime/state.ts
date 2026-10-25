@@ -11,6 +11,7 @@ export const CheckpointSchema = z.object({
   messages: z.array(z.custom<ModelMessage>()),
   pending: z.array(PendingCallSchema),
   seenCallIds: z.array(z.string()),
+  writeCalls: z.number().int().nonnegative().default(0),
   modelCalls: z.number().int().nonnegative(), toolCalls: z.number().int().nonnegative(),
   usage: UsageSchema, startedAt: z.number(), activeMs: z.number().nonnegative(),
   approvalMode: z.enum(["human", "deny"]),

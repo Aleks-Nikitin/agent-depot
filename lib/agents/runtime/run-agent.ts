@@ -28,7 +28,7 @@ export async function runAgent(options: {
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
   const state: Checkpoint = { schemaVersion: 1, messages: [{ role: "user", content: message }], pending: [], seenCallIds: [],
-    modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
+    writeCalls: 0, modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
   return continueRun(run.id, options.ownerId, deps, undefined, "run_started");
@@ -117,24 +117,28 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         call.input = normalizedInput;
         let writeApproved = false;
         if (selected.kind === "write") {
-          if (!callDecision) {
+          guard((state.writeCalls ?? 0) < config.limits.maxWriteCalls, "write_limit");
+          if (!callDecision && (config.requireWriteApproval || !selected.automaticWrites || (selected.canAutoWrite ? !selected.canAutoWrite(call.input) : false))) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
             await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
+          state.writeCalls = (state.writeCalls ?? 0) + 1;
         }
         state.toolCalls++;
         await save();
-        await emit({ type: "tool_started", payload: call });
+        await emit({ type: "tool_started", payload: { ...call, authorization: selected.kind === "read" ? "read" : callDecision ? "human" : "policy" } });
         const started = Date.now();
         let output: unknown;
         try {
           output = await withCancellation(signal, () => dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
             context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
         } catch (error) {
-          await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason: "tool_execution_failed" } });
+          const safeCodes = new Set(["ticket_not_found", "idempotency_conflict"]);
+          const reason = error instanceof Error && safeCodes.has(error.message) ? error.message : "tool_execution_failed";
+          await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason } });
           throw error;
         }
         addResult(state, call, output); state.pending.shift(); await save();

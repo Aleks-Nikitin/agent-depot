@@ -1,3 +1,4 @@
+import { TemplateEmailInput, renderSupportEmail } from "@/lib/integrations/email-policy";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { CheckIcon, XIcon } from "@/components/ui/icons";
@@ -11,7 +12,7 @@ const isEmail = (v: unknown): v is Email =>
 const stateLabel = {
   pending: "Intervention required",
   approved: "Approved",
-  rejected: "Rejected · not sent",
+  rejected: "Rejected · action not executed",
   expired: "Expired · start a new run",
 } as const;
 
@@ -22,6 +23,8 @@ const stateLabel = {
 export function ApprovalCard({ item, now, onDecide, busy }: {
   item: ApprovalItem; now?: number; onDecide?: (approved: boolean) => void; busy?: boolean;
 }) {
+  const template = TemplateEmailInput.safeParse(item.input);
+  const preview = template.success ? renderSupportEmail(template.data) : item.input;
   const state = approvalState(item, now);
   const pending = state === "pending";
   return (
@@ -39,11 +42,11 @@ export function ApprovalCard({ item, now, onDecide, busy }: {
       </div>
 
       <div className="mt-4 rounded-lg border border-(--ad-border) bg-(--ad-bg)/70 p-4">
-        {isEmail(item.input) ? (
+        {isEmail(preview) ? (
           <div className="text-sm">
-            <p className="ad-mono border-b border-(--ad-border) pb-2.5 text-[13px]"><span className="text-(--ad-muted)">To:</span> {item.input.to}</p>
-            <p className="ad-mono border-b border-(--ad-border) py-2.5 text-[13px]"><span className="text-(--ad-muted)">Subject:</span> {item.input.subject}</p>
-            <p className="pt-3 leading-relaxed">{item.input.body}</p>
+            <p className="ad-mono border-b border-(--ad-border) pb-2.5 text-[13px]"><span className="text-(--ad-muted)">To:</span> {preview.to}</p>
+            <p className="ad-mono border-b border-(--ad-border) py-2.5 text-[13px]"><span className="text-(--ad-muted)">Subject:</span> {preview.subject}</p>
+            <p className="pt-3 leading-relaxed">{preview.body}</p>
           </div>
         ) : (
           <pre className="ad-mono max-h-56 overflow-auto text-xs break-words whitespace-pre-wrap">{formatValue(item.input)}</pre>

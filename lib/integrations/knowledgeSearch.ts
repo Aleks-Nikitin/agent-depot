@@ -92,12 +92,12 @@ export function searchKnowledge(args: unknown, docs: KnowledgeDoc[]) {
       .map(doc => ({ id: doc.id, title: doc.title, text: doc.text, score: scoreDoc(doc, keywords), matchedSentence: matchedSentence(doc.text, keywords) }))
       .filter(doc => doc.score > 0)
       .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, 2);
-    return { source: "acme_knowledge", query, matches: ranked };
+    return { source: "knowledge_base", query, matches: ranked };
 }
 
 export const knowledgeSearch: Tool = {
   id: "knowledge_search",
-  description: "Search AcmeStore policy documents for returns, shipping, and refunds.",
+  description: "Search workspace documents. Without uploaded documents, returns clearly labeled illustrative policies.",
   input,
   kind: "read",
   async run(args) {

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/components/ui/cn";
 
 // Builder lives at /agents/[id] (Dev 1); Playground and Tests are Dev 3 sub-routes.
-// PLACEHOLDER(P2): no Versions route yet; Dev 1 shows versions inside the Builder, so the tab goes there.
+// Shared navigation to persisted agent screens.
 const tabs = [
   { segment: "builder", label: "Builder", path: "" },
   { segment: "playground", label: "Playground", path: "/playground" },

@@ -6,7 +6,7 @@ export async function GET(request: Request) {
     await currentOwner(request);
   const products = getProducts();
   return Response.json({
-    source: "acme_sales",
+    source: "sample_sales", demo: true,
     currency: "USD",
     count: products.length,
     products,

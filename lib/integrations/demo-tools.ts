@@ -31,8 +31,9 @@ export const demoTools: ToolDefinition[] = [
     },
   },
   {
-    id: "create_ticket", description: "Create a support ticket in the local demo database. Requires approval.",
-    kind: "write", inputSchema: ticketSchema,
+    id: "create_ticket", description: "Create a bounded support ticket in the workspace database; follows the saved write policy.",
+    kind: "write", inputSchema: ticketSchema, automaticWrites: true,
+    outputSchema: z.object({ id: z.string().min(1), subject: z.string().max(200) }).strict(),
     async run(input, context) {
       context.signal.throwIfAborted();
       const { subject } = ticketSchema.parse(input);
