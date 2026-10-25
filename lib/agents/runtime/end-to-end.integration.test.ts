@@ -13,6 +13,7 @@ const db = getDb();
 const runIds: string[] = [];
 const agentIds: string[] = [];
 beforeEach(() => {
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.stubEnv("RUNTIME_API_TOKEN", "end-to-end-test-token-not-a-secret");
   vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "test-key-not-real");
   vi.stubEnv("RUNTIME_MODEL_ID", "gemini-2.5-flash-lite");

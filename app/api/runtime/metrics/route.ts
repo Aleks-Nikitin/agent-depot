@@ -11,7 +11,7 @@ const QuerySchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    const ownerId = authorize(request);
+    const ownerId = await authorize(request);
     const params = new URL(request.url).searchParams;
     const entries = [...params.entries()];
     if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new HttpError(400, "invalid_metrics_window");

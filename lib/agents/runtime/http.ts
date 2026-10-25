@@ -2,11 +2,14 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { RunStep } from "../contracts";
 import { withCancellation } from "./cancellation";
+import { requestOwner } from "@/lib/auth/session";
+import { HttpError } from "@/lib/auth/errors";
+export { HttpError } from "@/lib/auth/errors";
 
-export class HttpError extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
-}
-export function authorize(request: Request): string {
+export async function authorize(request: Request): Promise<string> {
+  // Explicit local compatibility only. Signed-in browser requests use sessions.
+  if (process.env.RUNTIME_ALLOW_DEMO_TOKEN !== "true" || !request.headers.has("authorization")) return requestOwner(request);
+  if (process.env.NODE_ENV === "production") throw new HttpError(503, "demo_auth_disabled");
   const expected = process.env.RUNTIME_API_TOKEN;
   if (!expected || expected.length < 24) throw new HttpError(503, "runtime_auth_not_configured");
   const actual = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";

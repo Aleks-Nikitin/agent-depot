@@ -21,6 +21,7 @@ function request(query = windowQuery, authenticated = true) {
   });
 }
 beforeEach(() => {
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.stubEnv("RUNTIME_API_TOKEN", token);
   vi.stubEnv("RUNTIME_METRICS_BACKEND", "postgres");
 });

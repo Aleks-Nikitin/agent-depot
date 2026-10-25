@@ -4,12 +4,18 @@ import { RunRequestSchema } from "../contracts";
 import { eventFixtures } from "../fixtures";
 
 afterEach(() => vi.unstubAllEnvs());
-it("fails closed without demo auth and ignores caller owner headers", () => {
+it("requires explicit local demo auth and ignores caller owner headers", async () => {
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
+  const authorized = new Request("http://local", { headers: { authorization: "Bearer a-long-demo-token-for-testing", "x-owner-id": "other" } });
   vi.stubEnv("RUNTIME_API_TOKEN", "");
-  expect(() => authorize(new Request("http://local"))).toThrow("runtime_auth_not_configured");
+  await expect(authorize(authorized)).rejects.toThrow("runtime_auth_not_configured");
   vi.stubEnv("RUNTIME_API_TOKEN", "a-long-demo-token-for-testing");
-  expect(() => authorize(new Request("http://local"))).toThrow("unauthorized");
-  expect(authorize(new Request("http://local", { headers: { authorization: "Bearer a-long-demo-token-for-testing", "x-owner-id": "other" } }))).toBe("demo");
+  await expect(authorize(new Request("http://local"))).rejects.toThrow("unauthorized");
+  expect(await authorize(authorized)).toBe("demo");
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "false");
+  await expect(authorize(authorized)).rejects.toThrow("unauthorized");
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true"); vi.stubEnv("NODE_ENV", "production");
+  await expect(authorize(authorized)).rejects.toThrow("demo_auth_disabled");
 });
 it("rejects oversized bodies and client policy overrides", async () => {
   await expect(readBody(new Request("http://local", { method: "POST", body: "x".repeat(17000) }), RunRequestSchema)).rejects.toThrow("body_too_large");

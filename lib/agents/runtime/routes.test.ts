@@ -10,6 +10,7 @@ import { POST as approve } from "../../../app/api/approvals/[id]/route";
 import { POST as draft } from "../../../app/api/agents/draft/route";
 
 beforeEach(() => {
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.resetAllMocks(); vi.stubEnv("RUNTIME_API_TOKEN", "a-long-demo-token-for-testing");
   mocks.loadAgent.mockResolvedValue(supportAgent);
   mocks.services.mockReturnValue({ store: { claimApproval: mocks.claim }, driver: {}, registry: new Map() });

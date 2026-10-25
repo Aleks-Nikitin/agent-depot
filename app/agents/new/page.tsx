@@ -1,8 +1,10 @@
 import Link from "next/link";
 import AgentBuilder from "../_components/AgentBuilder";
 import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
+import { pageOwner } from "@/lib/auth/session";
 
-export default function NewAgentPage() {
+export default async function NewAgentPage() {
+  await pageOwner();
   return (
     <div>
       <nav className="mb-4 text-sm text-zinc-400">

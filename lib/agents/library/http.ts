@@ -1,16 +1,14 @@
 import { ZodError } from "zod";
+import { requestOwner } from "@/lib/auth/session";
+import { HttpError } from "@/lib/auth/errors";
 
-// Single-demo-workspace owner for the builder/library UI. The config API is
-// same-origin and unauthenticated; swap this for session ownership before any
-// multi-user or public deployment.
-export function currentOwner(): string {
-  return "demo";
-}
+export const currentOwner = requestOwner;
 
 const NOT_FOUND = new Set(["agent_not_found", "version_not_found"]);
 const CONFLICT = new Set(["tests_not_passed"]);
 
 export function configError(error: unknown): Response {
+  if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
   if (error instanceof ZodError) {
     return Response.json({ error: "invalid_input", issues: error.issues }, { status: 400 });
   }
