@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Geist_Mono } from "next/font/google";
+import { EB_Garamond, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/auth/site-nav";
 
-const geistSans = Playfair_Display({
+const geistSans = EB_Garamond({
   variable: "--font-geist-sans",
   style: ["normal", "italic"],
   subsets: ["latin"],

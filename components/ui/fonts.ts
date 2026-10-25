@@ -1,7 +1,7 @@
-import { Playfair_Display, JetBrains_Mono } from "next/font/google";
+import { EB_Garamond, JetBrains_Mono } from "next/font/google";
 
-// Editorial look: high-contrast serif for text/headings, monospace for chrome.
-export const serif = Playfair_Display({
+// Editorial look: warm old-style serif for text/headings, monospace for chrome.
+export const serif = EB_Garamond({
   subsets: ["latin"],
   style: ["normal", "italic"],
   variable: "--font-ad-sans",
