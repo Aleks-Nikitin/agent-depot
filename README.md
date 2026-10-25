@@ -67,6 +67,8 @@ npm run build
 
 Optional Tiger Data time-series analytics use the same PostgreSQL/Prisma stack. See [runtime metrics setup and query contracts](docs/runtime-metrics.md) for the default PostgreSQL path, TimescaleDB setup and isolated tests.
 
+`GET /api/runtime/metrics` provides authenticated hourly outcomes, duration, model/tool usage, token and estimated-cost aggregates. It requires the existing server-side bearer token and bounded UTC `from`/`to` query parameters; an optional `agentId` filters the report. The linked metrics documentation describes the API and temporary Tiger certificate compatibility setting. The local PostgreSQL path is verified; hosted Tiger write/read verification remains blocked before TLS.
+
 See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
 
 The runtime engine is implemented and verified locally. The merged playground, run-history and tests screens still use fixtures; live browser authentication and backend wiring remain integration work. The runtime documentation tracks the current checks and remaining integration gates. Hosted Tiger Cloud metric writes/reads remain unverified because external connections time out before TLS.
