@@ -62,6 +62,13 @@ it("does not start execution for an already disconnected request", async () => {
   await expect(response.text()).rejects.toThrow("run_stream_failed");
   expect(task).not.toHaveBeenCalled();
 });
+it("hands cancellation to an already-started run so it can settle durable state", async () => {
+  const controller = new AbortController(); controller.abort();
+  const task = vi.fn(async (signal: AbortSignal) => { expect(signal.aborted).toBe(true); });
+  const response = streamRun(new Request("http://local", { signal: controller.signal }), task, { alreadyStarted: true });
+  await response.text();
+  expect(task).toHaveBeenCalledOnce();
+});
 it("propagates response-reader cancellation to the active runtime", async () => {
   let activeSignal!: AbortSignal;
   const response = streamRun(new Request("http://local"), async (signal, emit) => {

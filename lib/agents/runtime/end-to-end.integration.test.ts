@@ -20,6 +20,7 @@ beforeEach(() => {
   vi.stubEnv("RUNTIME_OUTPUT_USD_PER_MILLION", "2");
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals(); vi.unstubAllEnvs();
   for (const runId of runIds.splice(0)) {
     await db.demoTicket.deleteMany({ where: { idempotencyKey: { startsWith: `${runId}:` } } });
@@ -33,10 +34,10 @@ async function agent(config: AgentConfig) {
   await db.agent.create({ data: { id: copy.id, ownerId: copy.ownerId, name: copy.name, version: copy.version, config: copy } });
   return copy;
 }
-function request(body: unknown) {
+function request(body: unknown, signal?: AbortSignal) {
   return new Request("http://localhost/api/test", { method: "POST", headers: {
     authorization: "Bearer end-to-end-test-token-not-a-secret", "content-type": "application/json",
-  }, body: JSON.stringify(body) });
+  }, body: JSON.stringify(body), signal });
 }
 function providerScript(parts: unknown[][]) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
@@ -93,6 +94,33 @@ it("pauses a real demo write and resumes through the approval HTTP handler exact
   expect(resumed[0].sequence).toBe(waiting.sequence + 1);
   expect(new Set([...events, ...resumed].map(e => e.runId))).toEqual(new Set([runId]));
   expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(1);
+  expect((await decide(request({ approved: true }), context)).status).toBe(409);
+});
+it("settles a claimed approval when the client disconnects during the claim", async () => {
+  const saved = await agent(supportAgent);
+  providerScript([[{ functionCall: { name: "create_ticket", args: { subject: "Disconnected approval" } } }]]);
+  const events = await readEvents(await execute(request({ message: "create ticket" }), { params: Promise.resolve({ id: saved.id }) }));
+  const waiting = events.at(-1)!;
+  if (waiting.type !== "approval_required") throw new Error("expected approval wait");
+  const runId = events[0].runId;
+  const controller = new AbortController();
+  const original = PrismaRunStore.prototype.claimApproval;
+  vi.spyOn(PrismaRunStore.prototype, "claimApproval").mockImplementationOnce(async function (this: PrismaRunStore, ...args) {
+    const claim = await original.apply(this, args);
+    controller.abort();
+    return claim;
+  });
+  const context = { params: Promise.resolve({ id: waiting.payload.approvalId }) };
+  const response = await decide(request({ approved: true }, controller.signal), context);
+  // Draining waits for cancellation cleanup even though the disconnected client
+  // cannot receive an approval-resolution notification.
+  await response.text().catch(() => {});
+  const history = await new PrismaRunStore(db).history(runId, "demo");
+  expect(history.status).toBe("failed");
+  expect(history.stopReason).toBe("interrupted_or_timeout");
+  expect(history.events.at(-1)?.type).toBe("run_failed");
+  expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(0);
+  expect(fetch).toHaveBeenCalledOnce();
   expect((await decide(request({ approved: true }), context)).status).toBe(409);
 });
 it("runs builder-created versions and resumes the original snapshot across edits and rollback", async () => {

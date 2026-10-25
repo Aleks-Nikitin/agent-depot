@@ -48,14 +48,17 @@ export function httpError(error: unknown): Response {
   if (["approval_unavailable", "run_unavailable"].includes(reason)) return Response.json({ error: reason }, { status: 409 });
   return Response.json({ error: "runtime_unavailable" }, { status: 503 });
 }
-export function streamRun(request: Request, task: (signal: AbortSignal, emit: (event: RunStep) => void) => Promise<unknown>) {
+export function streamRun(request: Request, task: (signal: AbortSignal, emit: (event: RunStep) => void) => Promise<unknown>,
+  options: { alreadyStarted?: boolean } = {}) {
   const controller = new AbortController();
   const signal = AbortSignal.any([request.signal, controller.signal]);
   let open = true;
   const stream = new ReadableStream<Uint8Array>({
     start(writer) {
       void Promise.resolve().then(() => {
-        signal.throwIfAborted();
+        // A claimed approval has already changed durable state. Its runtime
+        // must observe cancellation and settle that state rather than be skipped.
+        if (!options.alreadyStarted) signal.throwIfAborted();
         return task(signal, event => {
         if (open) writer.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"));
         });

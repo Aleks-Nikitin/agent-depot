@@ -145,6 +145,8 @@ Waiting approvals survive refresh/process replacement. Active operations honor c
 
 Async `onEvent` callbacks share the run deadline. A stalled callback cannot keep an active run open indefinitely: timeout persists `interrupted_or_timeout` and prevents additional work. Already-persisted completion and approval pauses remain authoritative if delivery times out. Subscriber code should still honor cancellation for its own external work.
 
+Approval cancellation has two boundaries. A disconnect observed before the database claim returns HTTP 408 without consuming the approval. Once claimed, the streaming task always hands control to the runtime, even if the request has disconnected; the runtime persists cancellation as `interrupted_or_timeout` instead of leaving a claimed run running. That decision is consumed and cannot be retried. A cancelled run does not automatically replay writes; inspect history before starting a new run. This handles request cancellation, not process crashes.
+
 ## Verification and current limits
 
 ```bash
