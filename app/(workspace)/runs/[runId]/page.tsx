@@ -1,3 +1,4 @@
+import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,6 +26,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 async function RunDetailContent({ params }: { params: Promise<{ runId: string }> }) {
+  if (!await pageOwnerOrNull()) return null;
   const { runId } = await params;
   const found = await getRun(decodeURIComponent(runId));
   if (!found) notFound();

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import AgentBuilder from "../_components/AgentBuilder";
 import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
-import { pageOwner } from "@/lib/auth/session";
+import { pageOwnerOrNull } from "@/lib/auth/session";
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 
 export default async function NewAgentPage() {
-  await pageOwner();
+  if (!await pageOwnerOrNull()) return <AuthPrompt />;
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <nav className="mb-4 text-sm text-zinc-400">
         <Link href="/" className="hover:text-white">
           Agents

@@ -12,11 +12,11 @@ Main's playground UI and runtime diagnostics merges are integrated through `e1c3
 
 Three integration gates remain outside the completed core engine:
 
-1. **Playground and evaluations:** wire authenticated browser requests to execution/approval, replace history fixtures with owner-scoped reads, and connect the test runner. Runtime interfaces are available below; session ownership and the UI's backend phase need coordinated integration.
+1. **Playground and evaluations:** replace history fixtures with owner-scoped reads and connect the test runner. Better Auth sessions now authorize browser requests directly to execution/approval; protected screens require login or isolated guest access. The UI remains in mock mode pending its history/data integration. See [authentication implementation](auth-README.md).
 2. **Optional hosted Tiger verification:** establish external connectivity, apply setup, and prove an application-originated metric write/read and monitoring read. The HeavyFuel URL-specific SSL compatibility option was applied on request, but both strict TCP diagnostics and the actual `pg` client still time out before TLS. Local TimescaleDB success is not hosted verification. The existing Tiger selector changes the entire primary database; an independently optional analytics destination would require a separate export design and is not implemented.
 3. **Deployment:** verify the deployed authentication boundary, streaming, approval/resume and database migrations. Local compilation and tests do not establish deployment success.
 
-The analytics endpoint follow-up passed **68 unit tests, 37 PostgreSQL integration tests, typecheck, lint and production compilation** using the documented one-off webpack fallback. The earlier isolated TimescaleDB suite passed **35 integration tests**; its SQL/setup has not changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures are not included in that live claim.
+The auth branch follow-up passed **68 unit tests, 43 PostgreSQL integration tests, typecheck, lint and production compilation** using the documented one-off webpack fallback. The default Turbopack dev server also passed the auth/guest browser workflow on localhost:3000. The earlier isolated TimescaleDB suite passed **35 integration tests**; its SQL/setup has not changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures and simulated OAuth/model responses are not included in that live claim.
 
 The runtime now exposes authenticated hourly analytics through `GET /api/runtime/metrics`. It returns owner-scoped outcome, active-duration, model/tool, token and estimated-cost aggregates from PostgreSQL or the configured Timescale view. See the metrics document for query parameters and authentication. This fills the analytics HTTP read boundary; it does not switch the fixture-backed dashboard to live data.
 
@@ -56,7 +56,7 @@ All settings are server-side; never prefix them with `NEXT_PUBLIC_`.
 - `DATABASE_TARGET`: `local` by default, or `tiger` to select `TIGER_DATABASE_URL` consistently for the app and Prisma CLI. Keep the local URL available and restart when switching. No implicit fallback or cross-database copying occurs.
 - `TIGER_DATABASE_URL`: optional server-only Tiger Cloud connection. Set it locally/deployed; never commit or log it.
 - `GOOGLE_GENERATIVE_AI_API_KEY`: real Google API key, stored only in the local/deployment environment.
-- `RUNTIME_API_TOKEN`: random secret of at least 24 characters. Empty/short values disable endpoints. This initial adapter authorizes one workspace (`demo`); it is not a multi-user login implementation.
+- `RUNTIME_API_TOKEN`: legacy local-script secret of at least 24 characters, usable only with explicit `RUNTIME_ALLOW_DEMO_TOKEN=true` outside production. Normal browser requests use Better Auth sessions and the verified user ID; no shared token is needed in browser code. See the auth README for `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` and GitHub settings.
 - `RUNTIME_MODEL_ID`: exact provider model ID. The selected default is `gemini-3.1-flash-lite`. The adapter also retains profiles for `gemini-2.5-flash` and `gemini-2.5-flash-lite`; availability is a provider/account prerequisite, not established by mocked tests.
 - `RUNTIME_INPUT_USD_PER_MILLION` / `RUNTIME_OUTPUT_USD_PER_MILLION`: conservative standard-text rates for the selected model. The example uses 0.25 / 1.50 for Gemini 3.1 Flash-Lite, verified October 24, 2026. Recheck rates when changing models, service tiers or input modalities. [Google pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-lite).
 
@@ -110,7 +110,7 @@ The demo ticket implementation uses a parameterized PostgreSQL `INSERT ... ON CO
 
 ## Events, streaming and API
 
-All endpoints use the demo bearer authorization adapter. Replace `authorize()` with verified session ownership when integrating multi-user authentication; never ship the shared API token in a browser bundle. A trusted server-side session-aware proxy can call these endpoints during integration.
+All endpoints use verified Better Auth session ownership, including guests. Same-origin browser requests send the HttpOnly session cookie; mutations require the configured Origin. The legacy demo bearer adapter is an explicit local-only compatibility option, disabled in production. No bearer-injecting proxy is needed. The curl examples below require that local compatibility option and access only the seeded `demo` workspace.
 
 - `POST /api/agents/[id]/run`: `{ "message": "..." }` → NDJSON events.
 - `POST /api/approvals/[id]`: `{ "approved": true }` (or false) → resumed NDJSON events for the same run.
@@ -157,7 +157,7 @@ The server-side evaluation runner calls `runAgent({ config, ownerId, message, ap
 
 ### Integration decisions for the merged playground
 
-The browser must never receive `RUNTIME_API_TOKEN`. The current bearer adapter deliberately authorizes the single `demo` workspace. A browser-facing adapter must establish its own trusted session/workspace context before invoking the runtime; merely injecting the secret into an unauthenticated proxy would expose execution to arbitrary callers. The proposed `/api/playground/...` routes in the UI are placeholders, not existing authenticated endpoints. Keep mock mode until the chosen adapter and history endpoint pass integration tests.
+The browser must never receive `RUNTIME_API_TOKEN`. Better Auth sessions now authorize the actual `/api/agents/[id]/run` and `/api/approvals/[id]` routes; the HTTP client paths use these routes directly. Keep mock mode until the remaining history endpoint and live UI integration pass checks. Authenticated execution/approval/metrics ownership has real PostgreSQL coverage with simulated Gemini responses; the standalone engine's earlier live Gemini checks remain separate evidence.
 
 For history, use `PrismaRunStore.history(runId, verifiedOwnerId, afterSequence)` and pass its safe projection through the UI's history schema. The monitoring branch owns list queries and endpoints. `AgentRun.version` is the checkpoint lock counter; the agent revision is `configSnapshot.version`. Never serialize `loadRun()` directly to the browser because it includes the checkpoint.
 

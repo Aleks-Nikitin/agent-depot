@@ -1,3 +1,4 @@
+import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { TestsScreen } from "@/components/tests/summary-card";
@@ -7,6 +8,7 @@ import { fixtureQuality, fixtureTestCases, fixtureTestReport } from "@/lib/fixtu
 export const metadata: Metadata = { title: "Tests · AgentDepot" };
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
+  if (!await pageOwnerOrNull()) return null;
   const { id } = await params;
   const agent = getFixtureAgent(decodeURIComponent(id));
   // PLACEHOLDER(P8): fixture cases and report for every agent until TestCase / TestRun exist.

@@ -36,12 +36,6 @@
   color-scheme: dark;
 }
 
-/* PLACEHOLDER(P1): until Dev 1 adopts TopNav in the root layout, AgentDepot screens hide the
-   root header and full-width the root <main>. Scoped by :has(), so other pages are untouched. */
-body:has(.ad-workspace) { background: #07080a; }
-body:has(.ad-workspace) > header { display: none; }
-body:has(.ad-workspace) > main { max-width: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-
 .ad-mono {
   font-family: var(--font-ad-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;

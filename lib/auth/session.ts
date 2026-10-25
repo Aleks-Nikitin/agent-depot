@@ -24,9 +24,15 @@ export async function requestOwner(request: Request) {
   return sessionOwner(request.headers);
 }
 
-export async function pageOwner() {
+export async function pageOwnerOrNull() {
   const requestHeaders = await headers();
+  if (!requestHeaders.get("cookie")) return null;
   const session = await getAuth().api.getSession({ headers: requestHeaders });
-  if (!session) redirect("/auth");
-  return session.user.id;
+  return session?.user.id ?? null;
+}
+
+export async function pageOwner() {
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) redirect("/auth");
+  return ownerId;
 }

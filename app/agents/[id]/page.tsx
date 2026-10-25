@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AgentBuilder from "../_components/AgentBuilder";
 import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
-import { pageOwner } from "@/lib/auth/session";
+import { pageOwnerOrNull } from "@/lib/auth/session";
+import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { getAgent } from "@/lib/agents/library/store";
 
 export default async function EditAgentPage({
@@ -11,7 +12,8 @@ export default async function EditAgentPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const ownerId = await pageOwner();
+  const ownerId = await pageOwnerOrNull();
+  if (!ownerId) return <AuthPrompt />;
   let agent;
   try {
     agent = await getAgent(ownerId, id);
@@ -20,7 +22,7 @@ export default async function EditAgentPage({
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <nav className="mb-4 text-sm text-zinc-400">
         <Link href="/" className="hover:text-white">
           Agents
