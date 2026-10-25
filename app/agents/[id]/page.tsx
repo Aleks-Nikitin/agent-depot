@@ -29,15 +29,15 @@ export default async function EditAgentPage({
   return (<>
     <div className="ad"><AgentHeader agent={header} /></div>
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      <nav className="mb-4 text-sm text-zinc-400">
-        <Link href="/" className="hover:text-white">
+      <nav className="mb-4 text-sm text-(--ad-muted)">
+        <Link href="/" className="hover:text-(--ad-text)">
           Agents
         </Link>{" "}
         / {agent.name}
       </nav>
       <div className="mb-6 flex items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
-        <span className="text-sm text-zinc-500">v{agent.version}</span>
+        <span className="text-sm text-(--ad-muted)">v{agent.version}</span>
       </div>
       <AgentBuilder
         mode="edit"

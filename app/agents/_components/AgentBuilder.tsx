@@ -157,12 +157,12 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
       <div>
-        {saveNotice && <p role="status" className="mb-4 rounded-lg border border-sky-400/30 bg-sky-400/10 p-3 text-sm">{saveNotice}</p>}
-        {mode === "create" && suggestedTests.length > 0 && <p className="mb-4 text-sm text-sky-300">{suggestedTests.length} suggested tests will be saved and run with this agent. Review them in Tests.</p>}
+        {saveNotice && <p role="status" className="mb-4 rounded-lg border border-(--ad-model-border) bg-(--ad-model-bg) p-3 text-sm">{saveNotice}</p>}
+        {mode === "create" && suggestedTests.length > 0 && <p className="mb-4 text-sm text-(--ad-model)">{suggestedTests.length} suggested tests will be saved and run with this agent. Review them in Tests.</p>}
         {/* Draft with Gemini */}
-        <section className="mb-6 rounded-lg border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-sky-500/5 p-4">
+        <section className="mb-6 rounded-lg border border-(--ad-border) bg-(--ad-surface) p-4">
           <label className="text-sm font-medium">✨ Draft with Gemini</label>
-          <p className="mt-0.5 text-xs text-zinc-400">
+          <p className="mt-0.5 text-xs text-(--ad-muted)">
             Describe what the agent should do; Gemini fills the form.
           </p>
           <div className="mt-2 flex gap-2">
@@ -170,24 +170,24 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="e.g. Answer customer returns questions from our policy docs"
-              className="flex-1 rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-violet-400"
+              className="flex-1 rounded-md border border-(--ad-border) bg-(--ad-surface) px-3 py-2 text-sm outline-none focus:border-(--ad-model)"
             />
             <button
               onClick={runDraft}
               disabled={drafting || goal.trim().length === 0}
-              className="rounded-md bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+              className="rounded-md bg-(--ad-text) px-4 py-2 text-sm font-medium text-(--ad-bg) hover:opacity-90 disabled:opacity-50"
             >
               {drafting ? "Drafting…" : "Draft"}
             </button>
           </div>
           {draftError && (
-            <p className="mt-2 text-xs text-red-300">{draftError}</p>
+            <p className="mt-2 text-xs text-(--ad-error)">{draftError}</p>
           )}
         </section>
 
         {/* Templates */}
         <section className="mb-6">
-          <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
+          <p className="mb-2 text-xs uppercase tracking-wide text-(--ad-muted)">
             Start from a template
           </p>
           <div className="flex flex-wrap gap-2">
@@ -195,7 +195,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
               <button
                 key={t.key}
                 onClick={() => applyTemplate(t)}
-                className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/10"
+                className="rounded-md border border-(--ad-border) px-3 py-1.5 text-sm hover:bg-(--ad-raised)"
               >
                 {t.label}
               </button>
@@ -204,15 +204,15 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
         </section>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-1 border-b border-white/10 text-sm">
+        <div className="mb-4 flex gap-1 border-b border-(--ad-border) text-sm">
           {(["form", "spec"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`-mb-px border-b-2 px-3 py-2 ${
                 tab === t
-                  ? "border-white text-white"
-                  : "border-transparent text-zinc-400 hover:text-white"
+                  ? "border-(--ad-text) text-(--ad-text)"
+                  : "border-transparent text-(--ad-muted) hover:text-(--ad-text)"
               }`}
             >
               {t === "form" ? "Configure" : "Spec (YAML)"}
@@ -223,9 +223,9 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
         {tab === "form" ? (
           <div className="space-y-5">
             {assumptions.length > 0 && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              <div className="rounded-md border border-(--ad-approval-border) bg-(--ad-approval-bg) px-4 py-3 text-sm text-(--ad-approval)">
                 <p className="font-medium">Gemini made assumptions:</p>
-                <ul className="mt-1 list-disc pl-5 text-amber-100/90">
+                <ul className="mt-1 list-disc pl-5 text-(--ad-approval)">
                   {assumptions.map((a, i) => (
                     <li key={i}>{a}</li>
                   ))}
@@ -238,7 +238,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                className="mt-1 w-full rounded-md border border-(--ad-border) bg-(--ad-surface) px-3 py-2 text-sm outline-none focus:border-(--ad-model)"
                 placeholder="Support Agent"
               />
             </div>
@@ -249,32 +249,32 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={6}
-                className="mt-1 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                className="mt-1 w-full rounded-md border border-(--ad-border) bg-(--ad-surface) px-3 py-2 text-sm outline-none focus:border-(--ad-model)"
                 placeholder="Describe how the agent should behave…"
               />
             </div>
 
             <div>
               <label className="text-sm font-medium">Model</label>
-              <div className="mt-1 inline-flex rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-zinc-300">
+              <div className="mt-1 inline-flex rounded-md border border-(--ad-border) bg-(--ad-surface) px-3 py-2 text-sm text-(--ad-text)">
                 Gemini 3.1 Flash-Lite
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-sm">Model step limit<input type="number" min={1} max={10} value={maxCalls} onChange={event => setMaxCalls(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
-              <label className="text-sm">Estimated model cost cap (USD)<input type="number" min={0.001} max={1} step={0.001} value={costCap} onChange={event => setCostCap(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-white/15 bg-zinc-950 p-3" /></label>
+              <label className="text-sm">Model step limit<input type="number" min={1} max={10} value={maxCalls} onChange={event => setMaxCalls(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-(--ad-border) bg-(--ad-surface) p-3" /></label>
+              <label className="text-sm">Estimated model cost cap (USD)<input type="number" min={0.001} max={1} step={0.001} value={costCap} onChange={event => setCostCap(Number(event.target.value))} className="mt-2 w-full rounded-lg border border-(--ad-border) bg-(--ad-surface) p-3" /></label>
             </div>
             <div>
               <label className="text-sm font-medium">Tools</label>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-(--ad-muted)">
                 🔒 marks write tools that require human approval at run time.
               </p>
               <div className="mt-2 space-y-2">
                 {catalog.map((tool) => (
                   <label
                     key={tool.id}
-                    className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[0.02] p-3 hover:border-white/25"
+                    className="flex cursor-pointer items-start gap-3 rounded-md border border-(--ad-border) bg-(--ad-surface) p-3 hover:border-(--ad-muted)"
                   >
                     <input
                       type="checkbox"
@@ -289,11 +289,11 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                           <span title="Requires approval">🔒</span>
                         )}
                       </span>
-                      <span className="block text-xs text-zinc-400">
+                      <span className="block text-xs text-(--ad-muted)">
                         {tool.description}
                       </span>
                       {reasons[tool.id] && (
-                        <span className="mt-1 block text-xs text-sky-300">
+                        <span className="mt-1 block text-xs text-(--ad-model)">
                           Gemini: {reasons[tool.id]}
                         </span>
                       )}
@@ -304,13 +304,13 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
             </div>
 
             {saveError && (
-              <p className="text-sm text-red-300">{saveError}</p>
+              <p className="text-sm text-(--ad-error)">{saveError}</p>
             )}
 
             <button
               onClick={save}
               disabled={!canSave || saving}
-              className="rounded-md bg-white px-5 py-2 text-sm font-medium text-black hover:bg-zinc-200 disabled:opacity-50"
+              className="rounded-md bg-(--ad-text) px-5 py-2 text-sm font-medium text-(--ad-bg) hover:opacity-90 disabled:opacity-50"
             >
               {saving
                 ? "Saving…"
@@ -320,7 +320,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
             </button>
           </div>
         ) : (
-          <pre className="overflow-x-auto rounded-md border border-white/10 bg-black/40 p-4 font-mono text-xs leading-relaxed text-zinc-200">
+          <pre className="overflow-x-auto rounded-md border border-(--ad-border) bg-(--ad-raised) p-4 font-mono text-xs leading-relaxed text-(--ad-text)">
             {specYaml}
           </pre>
         )}
@@ -329,26 +329,26 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
       {/* Right rail: versions + publish (edit mode only) */}
       {mode === "edit" && detail && (
         <aside className="space-y-4">
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-lg border border-(--ad-border) bg-(--ad-surface) p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-medium">Versions</h2>
-              <span className="text-xs text-zinc-500">current v{detail.version}</span>
+              <span className="text-xs text-(--ad-muted)">current v{detail.version}</span>
             </div>
             <ul className="mt-3 space-y-2">
               {detail.versions.map((v) => (
                 <li
                   key={v.version}
-                  className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm"
+                  className="flex items-center justify-between rounded-md border border-(--ad-border) px-3 py-2 text-sm"
                 >
                   <span className="flex items-center gap-2">
                     v{v.version}
                     {v.isCurrent && (
-                      <span className="rounded bg-sky-500/20 px-1.5 text-xs text-sky-300">
+                      <span className="rounded bg-(--ad-model-bg) px-1.5 text-xs text-(--ad-model)">
                         current
                       </span>
                     )}
                     {v.isPublished && (
-                      <span className="rounded bg-emerald-500/20 px-1.5 text-xs text-emerald-300">
+                      <span className="rounded bg-(--ad-success-bg) px-1.5 text-xs text-(--ad-success)">
                         published
                       </span>
                     )}
@@ -357,7 +357,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
                     <button
                       onClick={() => onRollback(v.version)}
                       disabled={working}
-                      className="text-xs text-zinc-300 hover:text-white disabled:opacity-50"
+                      className="text-xs text-(--ad-text) hover:text-(--ad-text) disabled:opacity-50"
                     >
                       Roll back
                     </button>
@@ -367,15 +367,15 @@ export default function AgentBuilder({ mode, catalog, templates, initial, initia
             </ul>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          <div className="rounded-lg border border-(--ad-border) bg-(--ad-surface) p-4">
             <h2 className="text-sm font-medium">Publish</h2>
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-(--ad-muted)">
               Publishing marks a revision as released after its saved checks pass.
             </p>
-            <Link href={`/agents/${detail.id}/tests`} className="mt-3 inline-block text-sm text-sky-300 underline">Run tests and publish this version</Link>
-            <p className="mt-2 text-xs text-zinc-400">Publish checks the latest saved results for this version and its current test definitions.</p>
+            <Link href={`/agents/${detail.id}/tests`} className="mt-3 inline-block text-sm text-(--ad-model) underline">Run tests and publish this version</Link>
+            <p className="mt-2 text-xs text-(--ad-muted)">Publish checks the latest saved results for this version and its current test definitions.</p>
             {detail.published && (
-              <p className="mt-2 text-xs text-emerald-300">
+              <p className="mt-2 text-xs text-(--ad-success)">
                 Published v{detail.publishedVersion}
               </p>
             )}

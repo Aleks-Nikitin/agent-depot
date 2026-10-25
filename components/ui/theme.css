@@ -1,30 +1,30 @@
 /* AgentDepot "backlit geometry" tokens. Scoped to .ad so other screens keep their own styling. */
 .ad {
-  --ad-bg: #07080a;
-  --ad-surface: #0e1014;
-  --ad-raised: #15181d;
-  --ad-border: #22262d;
-  --ad-text: #e8ebf0;
-  --ad-muted: #9aa1ac;
-  --ad-ice: #e8ecf2;
+  --ad-bg: #ece9e0;
+  --ad-surface: #f4f2eb;
+  --ad-raised: #e6e2d6;
+  --ad-border: #cfc8b8;
+  --ad-text: #1c1a17;
+  --ad-muted: #6f6859;
+  --ad-ice: #1c1a17;
 
-  --ad-model: #93aecb;
-  --ad-model-bg: rgba(147, 174, 203, 0.1);
-  --ad-model-border: rgba(147, 174, 203, 0.3);
-  --ad-tool: #b9a3cc;
-  --ad-tool-bg: rgba(185, 163, 204, 0.1);
-  --ad-tool-border: rgba(185, 163, 204, 0.3);
-  --ad-approval: #d2ae6a;
-  --ad-approval-bg: rgba(210, 174, 106, 0.12);
-  --ad-approval-border: rgba(210, 174, 106, 0.4);
-  --ad-error: #d88e84;
-  --ad-error-bg: rgba(216, 142, 132, 0.1);
-  --ad-error-border: rgba(216, 142, 132, 0.32);
-  --ad-success: #92c4a0;
-  --ad-success-bg: rgba(146, 196, 160, 0.1);
-  --ad-success-border: rgba(146, 196, 160, 0.3);
+  --ad-model: #3f678f;
+  --ad-model-bg: rgba(63, 103, 143, 0.1);
+  --ad-model-border: rgba(63, 103, 143, 0.3);
+  --ad-tool: #7a5e94;
+  --ad-tool-bg: rgba(122, 94, 148, 0.1);
+  --ad-tool-border: rgba(122, 94, 148, 0.3);
+  --ad-approval: #9c7420;
+  --ad-approval-bg: rgba(156, 116, 32, 0.12);
+  --ad-approval-border: rgba(156, 116, 32, 0.4);
+  --ad-error: #b0453a;
+  --ad-error-bg: rgba(176, 69, 58, 0.1);
+  --ad-error-border: rgba(176, 69, 58, 0.32);
+  --ad-success: #4f7a58;
+  --ad-success-bg: rgba(79, 122, 88, 0.12);
+  --ad-success-border: rgba(79, 122, 88, 0.3);
 
-  --ad-spectrum: linear-gradient(120deg, #3e6fd8 0%, #9b4fd8 38%, #dcd4f2 70%, #cdeee6 100%);
+  --ad-spectrum: linear-gradient(120deg, #b2552f 0%, #d9a441 38%, #e7d9c4 70%, #cdeee6 100%);
 
   position: relative;
   isolation: isolate;
@@ -33,7 +33,7 @@
   color: var(--ad-text);
   font-family: var(--font-ad-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .ad-mono {
@@ -56,7 +56,7 @@
   width: 720px;
   height: 720px;
   border-radius: 9999px;
-  background: radial-gradient(closest-side, rgba(155, 79, 216, 0.1), rgba(62, 111, 216, 0.05) 55%, transparent);
+  background: radial-gradient(closest-side, rgba(178, 85, 47, 0.1), rgba(217, 164, 65, 0.06) 55%, transparent);
   filter: blur(40px);
 }
 

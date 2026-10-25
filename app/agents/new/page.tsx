@@ -10,8 +10,8 @@ export default async function NewAgentPage({ searchParams }: PageProps<"/agents/
   const template = typeof query.template === "string" ? templateByKey(query.template) : undefined;
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      <nav className="mb-4 text-sm text-zinc-400">
-        <Link href="/" className="hover:text-white">
+      <nav className="mb-4 text-sm text-(--ad-muted)">
+        <Link href="/" className="hover:text-(--ad-text)">
           Agents
         </Link>{" "}
         / New
