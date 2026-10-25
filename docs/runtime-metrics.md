@@ -28,6 +28,27 @@ Historical updates/deletes, including run deletion cascading to metrics, can rem
 
 Prisma migrations own the relational schema; optional Timescale SQL owns its hypertable/aggregate/policy. Avoid `prisma db push` or destructive migration changes against extension-owned internal schemas. Coordinate intentional future SQL/schema changes.
 
+### Connection troubleshooting
+
+```bash
+DATABASE_TARGET=tiger npm run db:diagnose
+```
+
+This credential-free probe reports DNS resolution, TCP connection, PostgreSQL SSL negotiation and verified TLS separately. It never authenticates or prints database URLs/addresses/passwords. A TCP timeout happens before certificate validation; disabling certificate checks cannot fix it. Check service readiness, the current Connect URL, public/VPC networking, attached IP allow lists and outbound network restrictions. Try the same command in your terminal or on another permitted network to locate a network-specific block. If an allow list is attached, it must include the connecting machine's public egress IPv4/CIDR. The existence of the settings section alone does not mean a list is attached. [Tiger security documentation](https://www.tigerdata.com/docs/deploy/tiger-cloud/tiger-cloud-aws/security/ip-allow-list)
+
+The diagnostic always verifies certificates and hostname using Node's trusted CAs. A certificate failure is reported at `tls_verification`, not `tcp`; investigate the trust chain rather than setting `rejectUnauthorized: false`. Local loopback Docker PostgreSQL may report `server_tls_unavailable`, since its development-only service does not enable TLS. A successful probe establishes reachability/TLS, not credential validity or migration permissions.
+
+The initial configuration record identifies the selected target/source variable, presence of username/password/database/port, whether the endpoint is local, and normalized SSL/compatibility settings. It contains no actual endpoint, database, user or secret values. Missing credentials are reported but do not prevent the credential-free network probe; authentication is a separate check.
+
+### Hosted investigation status
+
+- **Configuration:** explicit Tiger selection uses `TIGER_DATABASE_URL`. Endpoint/database/user match the downloaded service credentials; Node parsing agrees and no environment override was found. A missing `.env` password was restored privately. Authentication remains untested.
+- **Connectivity:** Node and macOS `psql` (`require`/`verify-full`) time out before TLS, as does Docker Linux `psql`. The HeavyFuel control also times out. Six IPv4 addresses resolve, no IPv6 records exist, and all explicit IPv4 probes time out. No configured proxy or connected VPN was found; this is not a comprehensive firewall exclusion.
+- **TLS:** the HeavyFuel compatibility option would change certificate verification; it was not applied. No global TLS override was enabled. [Driver SSL behavior](https://node-postgres.com/features/ssl)
+- **Verification:** owner-reported Console `SELECT 1` confirms internal SQL only. Hosted application authentication, migrations, hypertable/aggregate setup and metric write/read remain **unverified**. This branch/main have a query helper, but no monitoring HTTP route; no hosted API success is claimed.
+- **Scope:** only this Mac is available. Docker shares its egress; hotspot tests used the same device. No independent external client can distinguish device/network restrictions from service-side reachability. Resume after endpoint/network changes or an independent probe.
+- **Fallback:** `DATABASE_TARGET=local` remains selected; normal execution makes no Tiger calls. Selecting `tiger` moves the whole application database—it is not an independent optional analytics sink or automatic failover. No runtime architecture was changed to bypass the network blocker; separate hosted export/monitoring remains post-connect work.
+
 ## Monitoring server integration
 
 Call the helper after resolving the authorized session/workspace owner. The helper does not authenticate callers; never pass an arbitrary browser-provided owner ID.
@@ -48,6 +69,10 @@ The window is inclusive `from`, exclusive `to`, with exact UTC hour boundaries s
 Each bucket contains `runs`, `completed`, `failed`, `blocked`, `activeMsTotal`, `averageActiveMs`, `modelCalls`, `toolCalls`, `knownInputTokens`, `knownOutputTokens`, `knownEstimatedCostUsd` and `unknownUsageRuns`. Known totals sum available components; show the unknown count beside cost/token totals. Estimated cost is not a provider invoice or infrastructure bill. Combine hours using total duration/count, not an average of averages. Success rates count terminal runs in the finish-time window and exclude active/waiting runs and pre-migration history.
 
 The monitoring branch owns its authenticated HTTP endpoint, charts, date filters and presentation. This branch provides the query contract and atomic persistence.
+
+`npm run runtime:smoke -- --live` also verifies each live run produces exactly one terminal metric with matching estimated cost and appears in the selected hourly analytics backend. Approval pauses must produce no terminal metric. Its cleanup removes its own runs/tickets and cascaded metrics after checking them; a later report may therefore contain zero smoke runs.
+
+The expanded live check passed on October 24, 2026 with the PostgreSQL backend (five Gemini checks plus terminal-row/hourly-ingestion assertions; estimated model cost $0.001267). The connection diagnostic separately distinguished reachable local PostgreSQL without TLS from a TCP timeout on the configured Tiger Cloud endpoint. Hosted setup/ingestion is not yet verified; local TimescaleDB extension tests passed independently.
 
 ## Isolated TimescaleDB tests
 
