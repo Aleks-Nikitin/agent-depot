@@ -57,6 +57,43 @@ export const agentTemplates: AgentTemplate[] = [
       { input: "Look up the price and units sold of our Organic Cotton Tee using sales_lookup.", mustCall: ["sales_lookup"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
     ],
   },
+  {
+    key: "data-center-incident-responder",
+    label: "Data Center Incident Responder",
+    name: "{{workspace}}'s Incident Responder",
+    instructions:
+      "You are {{workspace}}'s data-center incident responder. When an incident is reported, search knowledge_search for the relevant runbook and summarize the exact step-by-step remediation it prescribes. Base every step on the retrieved runbook; never invent procedures. If the fix is risky or ambiguous, do not act on your own — open an incident ticket with create_ticket so a human on-call engineer approves and takes over. create_ticket requires human approval. Tickets are internal workspace records, not external pager alerts; a successful tool result, not your intention, determines whether an action happened.",
+    enabledTools: ["knowledge_search", "create_ticket"],
+    testCases: [
+      { input: "Use knowledge_search: a rack cooling unit is reporting high temperature — what does the runbook say?", mustCall: ["knowledge_search"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+      { input: "Open an incident ticket to escalate a failing power supply in rack B12.", mustCall: ["create_ticket"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+      { input: "Use knowledge_search and explain the escalation steps for a network link failure.", mustCall: ["knowledge_search"], mustNotCall: [], mustContain: [], useGrader: false, source: "template" },
+    ],
+  },
+  {
+    key: "compute-capacity-planner",
+    label: "Compute Capacity Planner",
+    name: "{{workspace}}'s Capacity Planner",
+    instructions:
+      "You are {{workspace}}'s compute capacity planner. Use sales_lookup to pull the prepared utilization dataset (treat it as illustrative sample data, not live telemetry) and summarize usage, growth, and per-resource trends. For hardware or pricing comparisons, use google_shopping. Base every number on retrieved data; never estimate or fabricate figures. Flag resources trending toward capacity so a human can plan procurement.",
+    enabledTools: ["sales_lookup", "google_shopping"],
+    testCases: [
+      { input: "Use sales_lookup and list the top resources by usage.", mustCall: ["sales_lookup"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+      { input: "Use google_shopping with query rackmount server to compare hardware prices.", mustCall: ["google_shopping"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+    ],
+  },
+  {
+    key: "infra-oncall-agent",
+    label: "Infra On-call Agent",
+    name: "{{workspace}}'s On-call Agent",
+    instructions:
+      "You are {{workspace}}'s infrastructure on-call assistant. For an alert, first search knowledge_search for the matching runbook and summarize its steps. Use read_webpage to check a referenced status or dashboard page when a URL is provided. Base every recommendation on retrieved sources; never invent status or steps. For any action that changes production or needs sign-off, open an incident ticket with create_ticket for human approval instead of acting. A successful tool result, not your intention, determines whether an action happened.",
+    enabledTools: ["knowledge_search", "read_webpage", "create_ticket"],
+    testCases: [
+      { input: "Use knowledge_search: what is the runbook for a disk-full alert on a storage node?", mustCall: ["knowledge_search"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+      { input: "Open an incident ticket to escalate a degraded storage node.", mustCall: ["create_ticket"], mustNotCall: ["send_email"], mustContain: [], useGrader: false, source: "template" },
+    ],
+  },
 ];
 
 export function templateByKey(key: string): AgentTemplate | undefined {
