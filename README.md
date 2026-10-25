@@ -69,4 +69,8 @@ Optional Tiger Data time-series analytics use the same PostgreSQL/Prisma stack. 
 
 See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
 
+The runtime engine is implemented and verified locally. The merged playground, run-history and tests screens still use fixtures; live browser authentication and backend wiring remain integration work. The runtime documentation tracks the current checks and remaining integration gates. Hosted Tiger Cloud metric writes/reads remain unverified because external connections time out before TLS.
+
+`npm run typecheck` regenerates Next.js route types before checking TypeScript, so new pages/layouts pulled from teammates are included without running a full build first.
+
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. This environment's Turbopack CSS worker currently cannot bind its internal port; the recorded webpack command is a verification fallback only, not a change to the project's stack or scripts.

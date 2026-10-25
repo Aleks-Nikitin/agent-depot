@@ -4,6 +4,22 @@ Implementation documentation for the agent runtime engine: execution flow, tool 
 
 See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitoring query contracts and sponsor integration ownership.
 
+## Current implementation status
+
+The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.
+
+Main's playground UI and runtime diagnostics merges are integrated through `e1c3088`. The playground is still in `CLIENT_MODE = "mock"`, run history reads fixtures, and the tests screen uses fixtures. Merging these screens does not establish a live browser-to-runtime flow. See [playground integration gaps](playground-placeholders.md) for their implementation backlog.
+
+Three integration gates remain outside the completed core engine:
+
+1. **Playground and evaluations:** wire authenticated browser requests to execution/approval, replace history fixtures with owner-scoped reads, and connect the test runner. Runtime interfaces are available below; session ownership and the UI's backend phase need coordinated integration.
+2. **Optional hosted Tiger verification:** establish external connectivity, apply setup, and prove an application-originated metric write/read and monitoring read. Current probes time out before TLS. Local TimescaleDB success is not hosted verification. The existing Tiger selector changes the entire primary database; an independently optional analytics destination would require a separate export design and is not implemented.
+3. **Deployment:** verify the deployed authentication boundary, streaming, approval/resume and database migrations. Local compilation and tests do not establish deployment success.
+
+The latest combined-tree checks passed **68 unit tests, 34 PostgreSQL integration tests, typecheck and lint**. Production compilation passed using the documented one-off webpack fallback. The earlier isolated TimescaleDB suite passed **35 integration tests**; it has not been rerun with the UI merge because no metrics/storage code changed. The latest live Gemini run passed five checks, including terminal metric/hourly-ingestion assertions on local PostgreSQL (aggregate estimated model cost $0.001267); UI fixtures are not included in that live claim.
+
+`npm run typecheck` now runs `next typegen` before `tsc --noEmit`. This refreshes generated `PageProps`/`LayoutProps` route definitions after pulling new pages/layouts, without requiring a production build. No dependency or bundler change is involved.
+
 ## Overview
 
 One backend engine runs saved agents with different instructions and tools. It loads owner-scoped configuration, exposes only permitted tools, validates arguments, executes bounded model/tool rounds, streams durable events, pauses writes for human approval, and resumes with the same state. Evaluations reuse the engine with writes automatically denied. An additional endpoint generates editable agent drafts with tool reasons, assumptions and suggested tests.
@@ -132,6 +148,16 @@ Builder edits and rollbacks create new configuration versions. A waiting run res
 Call `PrismaRunStore.history(runId, ownerId, afterSequence)` for safe history projection. It includes summary, usage and ordered events; it does not expose the checkpoint. Deduplicate events by event ID and retain sequence numbers across approval/resume. Browser history should not expose database checkpoints or raw model messages.
 
 The server-side evaluation runner calls `runAgent({ config, ownerId, message, approvalMode: "deny" }, dependencies)`. It gets the same `AgentRunResult` and events with no approval wait or write side effect. Playground bodies cannot select this execution mode. The HTTP layer and reusable engine are separate so tests do not require a browser/server loopback request.
+
+### Integration decisions for the merged playground
+
+The browser must never receive `RUNTIME_API_TOKEN`. The current bearer adapter deliberately authorizes the single `demo` workspace. A browser-facing adapter must establish its own trusted session/workspace context before invoking the runtime; merely injecting the secret into an unauthenticated proxy would expose execution to arbitrary callers. The proposed `/api/playground/...` routes in the UI are placeholders, not existing authenticated endpoints. Keep mock mode until the chosen adapter and history endpoint pass integration tests.
+
+For history, use `PrismaRunStore.history(runId, verifiedOwnerId, afterSequence)` and pass its safe projection through the UI's history schema. The monitoring branch owns list queries and endpoints. `AgentRun.version` is the checkpoint lock counter; the agent revision is `configSnapshot.version`. Never serialize `loadRun()` directly to the browser because it includes the checkpoint.
+
+Agent headers can show `config.model` as the provider key, `limits.maxModelCalls` as the model-step cap, and `limits.maxEstimatedCostUsd` as the estimated model budget. A server-side display adapter can supply the configured model ID. Model duration is derived from paired start/finish event timestamps; model events intentionally contain no private reasoning. A completed run after a denied write is still `completed`; a UI rejection badge must remain a display classification rather than rewriting persisted status or the metrics definition.
+
+Draft suggestions contain `{ input, expectedBehavior }`. Preserve the expected behavior as a proposed assertion for review; do not silently convert prose into deterministic `mustCall`/`mustContain` checks or mark it passed. A semantic grader is separate from the runtime's evaluation mode, which only enforces execution policy. A bounded grader, persistent test results and a server-verified publish gate remain evaluation integration work.
 
 ## Draft generation
 
