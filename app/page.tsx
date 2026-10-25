@@ -3,11 +3,14 @@ import { listAgents } from "@/lib/agents/library/store";
 import { listRuns } from "@/lib/runs/queries";
 import Dashboard from "./dashboard";
 import { pageOwnerOrNull } from "@/lib/auth/session";
-import { AuthPrompt } from "@/components/auth/auth-prompt";
+import { AuthLanding } from "@/components/auth/auth-landing";
 
 async function SignedInDashboard() {
   const ownerId = await pageOwnerOrNull();
-  if (!ownerId) return <AuthPrompt />;
+  if (!ownerId) {
+    const githubEnabled = !!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET;
+    return <AuthLanding githubEnabled={githubEnabled} />;
+  }
   const [agents, history] = await Promise.all([listAgents(ownerId), listRuns(ownerId)]);
   return <Dashboard initialAgents={agents} recentRuns={history.runs} />;
 }
