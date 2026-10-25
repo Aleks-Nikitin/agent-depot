@@ -6,6 +6,7 @@ import { pageOwnerOrNull } from "@/lib/auth/session";
 import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { getAgent } from "@/lib/agents/library/store";
 import { AgentHeader, getAgentHeader } from "@/components/shell/agent-header";
+import { WorkspaceShell } from "@/components/shell/workspace-shell";
 
 // Loads an owner-scoped agent from the database per request; never prerendered.
 export const instant = false;
@@ -26,25 +27,27 @@ export default async function EditAgentPage({
   }
 
   const header = await getAgentHeader(id);
-  return (<>
-    <div className="ad"><AgentHeader agent={header} /></div>
-    <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      <nav className="mb-4 text-sm text-(--ad-muted)">
-        <Link href="/" className="hover:text-(--ad-text)">
-          Agents
-        </Link>{" "}
-        / {agent.name}
-      </nav>
-      <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
-        <span className="text-sm text-(--ad-muted)">v{agent.version}</span>
+  return (
+    <WorkspaceShell>
+      <AgentHeader agent={header} />
+      <div className="mx-auto w-full max-w-5xl px-6 py-8">
+        <nav className="mb-4 text-sm text-(--ad-muted)">
+          <Link href="/" className="hover:text-(--ad-text)">
+            Agents
+          </Link>{" "}
+          / {agent.name}
+        </nav>
+        <div className="mb-6 flex items-center gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{agent.name}</h1>
+          <span className="text-sm text-(--ad-muted)">v{agent.version}</span>
+        </div>
+        <AgentBuilder
+          mode="edit"
+          catalog={toolCatalog}
+          templates={agentTemplates}
+          initial={agent}
+        />
       </div>
-      <AgentBuilder
-        mode="edit"
-        catalog={toolCatalog}
-        templates={agentTemplates}
-        initial={agent}
-      />
-    </div>
-  </>);
+    </WorkspaceShell>
+  );
 }
