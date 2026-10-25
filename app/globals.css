@@ -1,20 +1,53 @@
 @import "tailwindcss";
 
-/* Agent Depot ships a single dark theme to match the brand shell. */
+/* Agent Depot — dark, developer-focused dashboard design tokens. */
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --bg: #080a0c;
+  --panel: #0d1115;
+  --surface: #14181d;
+  --border: #23282e;
+  --text: #e6eaf0;
+  --muted: #8995a5;
+  --success: #83b99a;
+  --pending: #c5a14a;
+  --primary: #d7d6e4;
+  --primary-text: #14181d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-success: var(--success);
+  --color-pending: var(--pending);
+  --color-primary: var(--primary);
+  --color-primary-text: var(--primary-text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --radius: 6px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Metric/table labels: tiny uppercase monospace with wide tracking. */
+.label-mono {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
 }

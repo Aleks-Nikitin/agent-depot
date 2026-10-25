@@ -152,46 +152,49 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
     }
   };
 
+  const inputClass =
+    "w-full rounded-[6px] border border-border bg-surface px-2.5 py-2 text-[12px] text-text outline-none focus:border-muted";
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <div>
+    <div className="grid gap-3 lg:grid-cols-[1fr_300px]">
+      {/* Left working panel */}
+      <div className="rounded-[6px] border border-border bg-panel p-4">
         {/* Draft with Gemini */}
-        <section className="mb-6 rounded-lg border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-sky-500/5 p-4">
-          <label className="text-sm font-medium">✨ Draft with Gemini</label>
-          <p className="mt-0.5 text-xs text-zinc-400">
+        <section className="mb-4 rounded-[6px] border border-border bg-surface p-3">
+          <div className="flex items-center justify-between">
+            <span className="label-mono">Draft with Gemini</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+          </div>
+          <p className="mt-1 text-[11px] text-muted">
             Describe what the agent should do; Gemini fills the form.
           </p>
           <div className="mt-2 flex gap-2">
             <input
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="e.g. Answer customer returns questions from our policy docs"
-              className="flex-1 rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-violet-400"
+              placeholder="e.g. Answer customer returns questions from policy docs"
+              className="flex-1 rounded-[6px] border border-border bg-panel px-2.5 py-2 text-[12px] text-text outline-none focus:border-muted"
             />
             <button
               onClick={runDraft}
               disabled={drafting || goal.trim().length === 0}
-              className="rounded-md bg-violet-500 px-4 py-2 text-sm font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+              className="rounded-[6px] bg-primary px-3 text-[12px] font-medium text-primary-text hover:brightness-95 disabled:opacity-40"
             >
               {drafting ? "Drafting…" : "Draft"}
             </button>
           </div>
-          {draftError && (
-            <p className="mt-2 text-xs text-red-300">{draftError}</p>
-          )}
+          {draftError && <p className="mt-2 text-[11px] text-pending">{draftError}</p>}
         </section>
 
         {/* Templates */}
-        <section className="mb-6">
-          <p className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
-            Start from a template
-          </p>
-          <div className="flex flex-wrap gap-2">
+        <section className="mb-4">
+          <span className="label-mono">Start from a template</span>
+          <div className="mt-2 flex flex-wrap gap-2">
             {templates.map((t) => (
               <button
                 key={t.key}
                 onClick={() => applyTemplate(t)}
-                className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/10"
+                className="rounded-[6px] border border-border bg-surface px-2.5 py-1.5 text-[12px] text-muted hover:text-text"
               >
                 {t.label}
               </button>
@@ -200,15 +203,15 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
         </section>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-1 border-b border-white/10 text-sm">
+        <div className="mb-4 flex gap-1 border-b border-border text-[12px]">
           {(["form", "spec"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`-mb-px border-b-2 px-3 py-2 ${
+              className={`-mb-px border-b-2 px-2.5 py-1.5 ${
                 tab === t
-                  ? "border-white text-white"
-                  : "border-transparent text-zinc-400 hover:text-white"
+                  ? "border-text/70 text-text"
+                  : "border-transparent text-muted hover:text-text"
               }`}
             >
               {t === "form" ? "Configure" : "Spec (YAML)"}
@@ -217,11 +220,11 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
         </div>
 
         {tab === "form" ? (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {assumptions.length > 0 && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                <p className="font-medium">Gemini made assumptions:</p>
-                <ul className="mt-1 list-disc pl-5 text-amber-100/90">
+              <div className="rounded-[6px] border border-pending/30 bg-pending/10 p-3 text-[12px] text-pending">
+                <span className="label-mono text-pending">Gemini assumptions</span>
+                <ul className="mt-1 list-disc pl-4">
                   {assumptions.map((a, i) => (
                     <li key={i}>{a}</li>
                   ))}
@@ -230,79 +233,89 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             )}
 
             <div>
-              <label className="text-sm font-medium">Name</label>
+              <label className="label-mono">Name</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                className={`mt-1 ${inputClass}`}
                 placeholder="Support Agent"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium">Instructions</label>
+              <label className="label-mono">Instructions</label>
               <textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={6}
-                className="mt-1 w-full rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm outline-none focus:border-sky-400"
+                className={`mt-1 ${inputClass} resize-y`}
                 placeholder="Describe how the agent should behave…"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium">Model</label>
-              <div className="mt-1 inline-flex rounded-md border border-white/15 bg-black/30 px-3 py-2 text-sm text-zinc-300">
-                Gemini 3.1 Flash-Lite
+              <label className="label-mono">Model</label>
+              <div className="mt-1 inline-flex rounded-[6px] border border-border bg-surface px-2.5 py-2 font-mono text-[11px] text-muted">
+                gemini-3.1-flash-lite
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium">Tools</label>
-              <p className="text-xs text-zinc-500">
-                🔒 marks write tools that require human approval at run time.
-              </p>
-              <div className="mt-2 space-y-2">
-                {catalog.map((tool) => (
-                  <label
-                    key={tool.id}
-                    className="flex cursor-pointer items-start gap-3 rounded-md border border-white/10 bg-white/[0.02] p-3 hover:border-white/25"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={tools.has(tool.id)}
-                      onChange={() => toggleTool(tool.id)}
-                      className="mt-1"
-                    />
-                    <span className="flex-1">
-                      <span className="flex items-center gap-2 font-mono text-sm">
-                        {tool.id}
-                        {tool.requiresApproval && (
-                          <span title="Requires approval">🔒</span>
+              <div className="flex items-center justify-between">
+                <label className="label-mono">Tools</label>
+                <span className="font-mono text-[10px] text-muted">
+                  🔒 = requires approval
+                </span>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {catalog.map((tool) => {
+                  const on = tools.has(tool.id);
+                  return (
+                    <label
+                      key={tool.id}
+                      className={`flex cursor-pointer items-start gap-2.5 rounded-[6px] border bg-surface p-2.5 ${
+                        on ? "border-muted" : "border-border hover:border-muted/60"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggleTool(tool.id)}
+                        className="mt-0.5 accent-[var(--success)]"
+                      />
+                      <span className="flex-1">
+                        <span className="flex items-center gap-1.5 font-mono text-[12px] text-text">
+                          {tool.id}
+                          {tool.requiresApproval && (
+                            <span
+                              className="font-mono text-[10px] text-pending"
+                              title="Requires approval"
+                            >
+                              🔒
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-[11px] text-muted">
+                          {tool.description}
+                        </span>
+                        {reasons[tool.id] && (
+                          <span className="mt-0.5 block font-mono text-[11px] text-success">
+                            {reasons[tool.id]}
+                          </span>
                         )}
                       </span>
-                      <span className="block text-xs text-zinc-400">
-                        {tool.description}
-                      </span>
-                      {reasons[tool.id] && (
-                        <span className="mt-1 block text-xs text-sky-300">
-                          Gemini: {reasons[tool.id]}
-                        </span>
-                      )}
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
-            {saveError && (
-              <p className="text-sm text-red-300">{saveError}</p>
-            )}
+            {saveError && <p className="text-[12px] text-pending">{saveError}</p>}
 
             <button
               onClick={save}
               disabled={!canSave || saving}
-              className="rounded-md bg-white px-5 py-2 text-sm font-medium text-black hover:bg-zinc-200 disabled:opacity-50"
+              className="h-[34px] rounded-[6px] bg-primary px-4 text-[12px] font-medium text-primary-text hover:brightness-95 disabled:opacity-40"
             >
               {saving
                 ? "Saving…"
@@ -312,35 +325,37 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             </button>
           </div>
         ) : (
-          <pre className="overflow-x-auto rounded-md border border-white/10 bg-black/40 p-4 font-mono text-xs leading-relaxed text-zinc-200">
+          <pre className="overflow-x-auto rounded-[6px] border border-border bg-bg p-3 font-mono text-[11px] leading-relaxed text-text">
             {specYaml}
           </pre>
         )}
       </div>
 
-      {/* Right rail: versions + publish (edit mode only) */}
+      {/* Right rail: versions + publish (edit only) */}
       {mode === "edit" && detail && (
-        <aside className="space-y-4">
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+        <aside className="space-y-3">
+          <div className="rounded-[6px] border border-border bg-panel p-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium">Versions</h2>
-              <span className="text-xs text-zinc-500">current v{detail.version}</span>
+              <span className="label-mono">Versions</span>
+              <span className="font-mono text-[10px] text-muted">
+                current v{detail.version}
+              </span>
             </div>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-2 space-y-1.5">
               {detail.versions.map((v) => (
                 <li
                   key={v.version}
-                  className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm"
+                  className="flex items-center justify-between rounded-[6px] border border-border bg-surface px-2.5 py-1.5"
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 font-mono text-[11px] text-text">
                     v{v.version}
                     {v.isCurrent && (
-                      <span className="rounded bg-sky-500/20 px-1.5 text-xs text-sky-300">
+                      <span className="rounded-[3px] bg-surface px-1 text-[10px] text-muted">
                         current
                       </span>
                     )}
                     {v.isPublished && (
-                      <span className="rounded bg-emerald-500/20 px-1.5 text-xs text-emerald-300">
+                      <span className="rounded-[3px] bg-success/15 px-1 text-[10px] text-success">
                         published
                       </span>
                     )}
@@ -349,7 +364,7 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
                     <button
                       onClick={() => onRollback(v.version)}
                       disabled={working}
-                      className="text-xs text-zinc-300 hover:text-white disabled:opacity-50"
+                      className="text-[11px] text-muted hover:text-text disabled:opacity-40"
                     >
                       Roll back
                     </button>
@@ -359,29 +374,30 @@ export default function AgentBuilder({ mode, catalog, templates, initial }: Prop
             </ul>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-            <h2 className="text-sm font-medium">Publish</h2>
-            <p className="mt-1 text-xs text-zinc-400">
-              Publishing marks the current version as production-ready.
+          <div className="rounded-[6px] border border-border bg-panel p-3">
+            <span className="label-mono">Publish</span>
+            <p className="mt-1 text-[11px] text-muted">
+              Marks the current version production-ready.
             </p>
-            <label className="mt-3 flex items-center gap-2 text-xs text-zinc-300">
+            <label className="mt-2 flex items-center gap-2 text-[11px] text-muted">
               <input
                 type="checkbox"
                 checked={testsPassed}
                 onChange={(e) => setTestsPassed(e.target.checked)}
+                className="accent-[var(--success)]"
               />
               Tests passed (wired to Dev 3&apos;s suite)
             </label>
             <button
               onClick={onPublish}
               disabled={!testsPassed || working}
-              className="mt-3 w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-400 disabled:opacity-50"
+              className="mt-2 h-[32px] w-full rounded-[6px] border border-success/40 bg-success/10 text-[12px] font-medium text-success hover:bg-success/20 disabled:opacity-40"
             >
               {detail.published ? `Republish v${detail.version}` : "Publish"}
             </button>
             {detail.published && (
-              <p className="mt-2 text-xs text-emerald-300">
-                Published v{detail.publishedVersion}
+              <p className="mt-2 font-mono text-[11px] text-success">
+                published v{detail.publishedVersion}
               </p>
             )}
           </div>

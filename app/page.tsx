@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   fetchAgents,
   duplicateAgent,
@@ -9,10 +10,15 @@ import {
   type AgentSummary,
 } from "./agents/_components/api";
 
+type StatusFilter = "all" | "published" | "draft";
+
 export default function Dashboard() {
+  const router = useRouter();
   const [agents, setAgents] = useState<AgentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
 
   const load = useCallback(async () => {
     try {
@@ -24,8 +30,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    // load() awaits the server before any setState, so this syncs external
-    // (server) state into React — not a synchronous cascading render.
+    // Syncs server state into React after an await; not a synchronous render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
@@ -51,103 +56,281 @@ export default function Dashboard() {
     }
   };
 
+  const metrics = useMemo(() => {
+    const list = agents ?? [];
+    const published = list.filter((a) => a.published).length;
+    const tools = new Set(list.flatMap((a) => a.enabledTools)).size;
+    return {
+      total: list.length,
+      published,
+      drafts: list.length - published,
+      tools,
+    };
+  }, [agents]);
+
+  const filtered = useMemo(() => {
+    const list = agents ?? [];
+    return list.filter((a) => {
+      const matchesQuery = a.name.toLowerCase().includes(query.trim().toLowerCase());
+      const matchesStatus =
+        status === "all" ||
+        (status === "published" ? a.published : !a.published);
+      return matchesQuery && matchesStatus;
+    });
+  }, [agents, query, status]);
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "agents.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const publishedPct =
+    metrics.total === 0 ? 0 : Math.round((metrics.published / metrics.total) * 100);
+
   return (
-    <div>
-      <div className="mb-6 flex items-end justify-between">
+    <div className="space-y-4">
+      {/* Page header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="mt-1 text-sm text-zinc-400">
+          <h1 className="text-[18px] font-semibold text-text">Agents</h1>
+          <p className="mt-0.5 text-[12px] text-muted">
             Configure, version, and publish reusable AI agents.
           </p>
         </div>
         <Link
           href="/agents/new"
-          className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200"
+          className="flex h-[34px] items-center gap-1.5 rounded-[6px] bg-primary px-3 text-[12px] font-medium text-primary-text hover:brightness-95"
         >
-          New Agent
+          <span className="text-[13px] leading-none">＋</span> New agent
         </Link>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <div className="rounded-[6px] border border-pending/30 bg-pending/10 px-3 py-2 text-[12px] text-pending">
           {error}
         </div>
       )}
 
-      {agents === null && !error && (
-        <p className="text-sm text-zinc-500">Loading…</p>
-      )}
+      {/* Metrics row */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Metric label="Total Agents" value={metrics.total} hint="in this workspace" />
+        <Metric
+          label="Published"
+          value={metrics.published}
+          hint="production-ready"
+          tone="success"
+        />
+        <Metric
+          label="Drafts"
+          value={metrics.drafts}
+          hint="not yet published"
+          tone="pending"
+        />
+        <Metric label="Tools In Use" value={metrics.tools} hint="distinct connectors" />
 
-      {agents && agents.length === 0 && (
-        <div className="rounded-lg border border-dashed border-white/15 px-6 py-12 text-center">
-          <p className="text-zinc-300">No agents yet.</p>
-          <p className="mt-1 text-sm text-zinc-500">
-            Create one from a template or draft it with Gemini.
+        {/* Mini status panel */}
+        <div className="rounded-[6px] border border-border bg-panel p-3">
+          <div className="flex items-center justify-between">
+            <span className="label-mono">Published Ratio</span>
+            <span className="rounded-full bg-success/15 px-1.5 py-0.5 font-mono text-[10px] text-success">
+              {publishedPct}%
+            </span>
+          </div>
+          <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-success"
+              style={{ width: `${publishedPct}%` }}
+            />
+          </div>
+          <p className="mt-2 font-mono text-[11px] text-muted">
+            {metrics.published}/{metrics.total} published
           </p>
-          <Link
-            href="/agents/new"
-            className="mt-4 inline-block rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200"
-          >
-            Create your first agent
-          </Link>
         </div>
-      )}
+      </div>
 
-      {agents && agents.length > 0 && (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {agents.map((agent) => (
-            <li
-              key={agent.id}
-              className="rounded-lg border border-white/10 bg-white/[0.03] p-4"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <Link
-                  href={`/agents/${agent.id}`}
-                  className="font-medium hover:underline"
+      {/* Filter toolbar */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[6px] border border-border bg-panel p-2">
+        <div className="flex h-[32px] flex-1 items-center gap-2 rounded-[6px] border border-border bg-surface px-2.5">
+          <span className="text-muted">⌕</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search agents…"
+            className="w-full bg-transparent text-[12px] text-text outline-none"
+          />
+        </div>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as StatusFilter)}
+          className="h-[32px] rounded-[6px] border border-border bg-surface px-2 text-[12px] text-text outline-none"
+        >
+          <option value="all">All status</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
+        </select>
+        <button
+          onClick={exportJson}
+          className="h-[32px] rounded-[6px] border border-border bg-surface px-3 text-[12px] text-muted hover:text-text"
+        >
+          Export
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto rounded-[6px] border border-border">
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead>
+            <tr className="border-b border-border bg-panel">
+              {["Name", "ID", "Version", "Tools", "Status", "Updated", ""].map((h) => (
+                <th
+                  key={h}
+                  className="label-mono px-3 py-2 text-left font-normal"
                 >
-                  {agent.name}
-                </Link>
-                {agent.published ? (
-                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
-                    Published v{agent.publishedVersion}
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {agents === null && !error && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-[12px] text-muted">
+                  Loading…
+                </td>
+              </tr>
+            )}
+            {agents && filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-10 text-center text-[12px] text-muted">
+                  No agents match. Create one from a template or draft it with Gemini.
+                </td>
+              </tr>
+            )}
+            {filtered.map((agent) => (
+              <tr
+                key={agent.id}
+                onClick={() => router.push(`/agents/${agent.id}`)}
+                className="h-[44px] cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface/50"
+              >
+                <td className="px-3 text-[12px] text-text">{agent.name}</td>
+                <td className="px-3 font-mono text-[11px] text-muted">
+                  {agent.id.slice(0, 8)}
+                </td>
+                <td className="px-3">
+                  <span className="rounded-[4px] border border-border bg-surface px-1.5 py-0.5 font-mono text-[11px] text-muted">
+                    v{agent.version}
                   </span>
-                ) : (
-                  <span className="rounded-full bg-zinc-500/15 px-2 py-0.5 text-xs text-zinc-400">
-                    Draft
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-zinc-500">
-                v{agent.version} · {agent.enabledTools.length} tool
-                {agent.enabledTools.length === 1 ? "" : "s"} ·{" "}
-                {new Date(agent.updatedAt).toLocaleString()}
-              </p>
-              <div className="mt-3 flex gap-2 text-sm">
-                <Link
-                  href={`/agents/${agent.id}`}
-                  className="rounded-md border border-white/15 px-3 py-1 hover:bg-white/10"
-                >
-                  Edit
-                </Link>
-                <button
-                  onClick={() => onDuplicate(agent.id)}
-                  disabled={busy === agent.id}
-                  className="rounded-md border border-white/15 px-3 py-1 hover:bg-white/10 disabled:opacity-50"
-                >
-                  Duplicate
-                </button>
-                <button
-                  onClick={() => onDelete(agent.id, agent.name)}
-                  disabled={busy === agent.id}
-                  className="rounded-md border border-red-500/30 px-3 py-1 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+                </td>
+                <td className="px-3 font-mono text-[11px] text-muted">
+                  {agent.enabledTools.length}
+                </td>
+                <td className="px-3">
+                  <StatusPill
+                    published={agent.published}
+                    publishedVersion={agent.publishedVersion}
+                  />
+                </td>
+                <td className="px-3 font-mono text-[11px] text-muted">
+                  {new Date(agent.updatedAt).toLocaleDateString()}
+                </td>
+                <td className="px-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <RowButton onClick={() => onDuplicate(agent.id)} disabled={busy === agent.id}>
+                      Duplicate
+                    </RowButton>
+                    <RowButton
+                      onClick={() => onDelete(agent.id, agent.name)}
+                      disabled={busy === agent.id}
+                      danger
+                    >
+                      Delete
+                    </RowButton>
+                    <span className="pl-1 text-muted">›</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  tone?: "success" | "pending";
+}) {
+  const color =
+    tone === "success" ? "text-success" : tone === "pending" ? "text-pending" : "text-text";
+  return (
+    <div className="rounded-[6px] border border-border bg-panel p-3">
+      <span className="label-mono">{label}</span>
+      <div className={`mt-2 font-mono text-[26px] font-bold leading-none ${color}`}>
+        {value}
+      </div>
+      <p className="mt-2 text-[11px] text-muted">{hint}</p>
+    </div>
+  );
+}
+
+function StatusPill({
+  published,
+  publishedVersion,
+}: {
+  published: boolean;
+  publishedVersion: number | null;
+}) {
+  if (published) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/12 px-2 py-0.5 font-mono text-[10px] text-success">
+        <span className="h-1 w-1 rounded-full bg-success" />
+        published v{publishedVersion}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-pending/12 px-2 py-0.5 font-mono text-[10px] text-pending">
+      <span className="h-1 w-1 rounded-full bg-pending" />
+      draft
+    </span>
+  );
+}
+
+function RowButton({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-[5px] border border-border bg-surface px-2 py-1 text-[11px] hover:border-muted disabled:opacity-40 ${
+        danger ? "text-pending" : "text-muted hover:text-text"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
