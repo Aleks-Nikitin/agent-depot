@@ -2,6 +2,8 @@
 
 Implementation documentation for the agent runtime engine: execution flow, tool registration, persistence, approvals, streaming APIs, configuration, design decisions, and verification.
 
+See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitoring query contracts and sponsor integration ownership.
+
 ## Overview
 
 One backend engine runs saved agents with different instructions and tools. It loads owner-scoped configuration, exposes only permitted tools, validates arguments, executes bounded model/tool rounds, streams durable events, pauses writes for human approval, and resumes with the same state. Evaluations reuse the engine with writes automatically denied. An additional endpoint generates editable agent drafts with tool reasons, assumptions and suggested tests.
@@ -33,6 +35,8 @@ Prisma is an ORM/client and migration CLI; PostgreSQL is the database server run
 All settings are server-side; never prefix them with `NEXT_PUBLIC_`.
 
 - `DATABASE_URL`: PostgreSQL connection string, matching the Compose port and password.
+- `DATABASE_TARGET`: `local` by default, or `tiger` to select `TIGER_DATABASE_URL` consistently for the app and Prisma CLI. Keep the local URL available and restart when switching. No implicit fallback or cross-database copying occurs.
+- `TIGER_DATABASE_URL`: optional server-only Tiger Cloud connection. Set it locally/deployed; never commit or log it.
 - `GOOGLE_GENERATIVE_AI_API_KEY`: real Google API key, stored only in the local/deployment environment.
 - `RUNTIME_API_TOKEN`: random secret of at least 24 characters. Empty/short values disable endpoints. This initial adapter authorizes one workspace (`demo`); it is not a multi-user login implementation.
 - `RUNTIME_MODEL_ID`: exact provider model ID. The selected default is `gemini-3.1-flash-lite`. The adapter also retains profiles for `gemini-2.5-flash` and `gemini-2.5-flash-lite`; availability is a provider/account prerequisite, not established by mocked tests.

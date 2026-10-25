@@ -20,7 +20,12 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "db:seed-demo": "tsx scripts/seed-demo.ts",
-    "runtime:smoke": "tsx scripts/check-runtime.ts"
+    "runtime:smoke": "tsx scripts/check-runtime.ts",
+    "metrics:setup": "tsx scripts/setup-runtime-metrics.ts",
+    "metrics:check": "tsx scripts/check-runtime-metrics.ts",
+    "metrics:test:up": "docker compose -f compose.timescale-test.yaml up -d --wait",
+    "metrics:test:down": "docker compose -f compose.timescale-test.yaml down",
+    "test:timescale": "tsx scripts/test-timescale.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.105",
