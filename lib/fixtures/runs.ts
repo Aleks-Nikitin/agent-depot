@@ -64,7 +64,7 @@ function build(d: Def): RunDetail {
     durationMs: trace.totals.durationMs, costUsd: trace.totals.costUsd, tokens: trace.totals.tokens,
     startedAt: events[0].timestamp, response: trace.response, stopReason: trace.stopReason,
     usage: done?.type === "run_completed" ? done.payload.usage : null,
-    maxModelCalls: agent.maxModelCalls, events,
+    maxModelCalls: agent.maxModelCalls, events, approvals: [],
   };
 }
 
