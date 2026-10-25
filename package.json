@@ -19,7 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.mts",
-    "db:seed-demo": "tsx scripts/seed-demo.ts"
+    "db:seed-demo": "tsx scripts/seed-demo.ts",
+    "runtime:smoke": "tsx scripts/check-runtime.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.105",
