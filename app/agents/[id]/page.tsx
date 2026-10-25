@@ -5,6 +5,9 @@ import { toolCatalog, agentTemplates } from "@/lib/agents/library/catalog";
 import { currentOwner } from "@/lib/agents/library/http";
 import { getAgent } from "@/lib/agents/library/store";
 
+// Loads an owner-scoped agent from the database per request; never prerendered.
+export const instant = false;
+
 export default async function EditAgentPage({
   params,
 }: {
