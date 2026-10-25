@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { isDeepStrictEqual } from "node:util";
 import { AgentConfigSchema, RunRequestSchema, type AgentConfig, type AgentRunResult, type EventInput, type RunStep } from "../contracts";
 import type { RunStore } from "../storage/prisma-store";
 import { dispatchTool, enabledTools, permittedTool, type ToolRegistry } from "../tools/registry";
@@ -82,7 +83,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
-    if (decision) guard(JSON.stringify(state.pending[0]) === JSON.stringify(decision.call), "approval_call_mismatch");
+    if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     while (true) {
       signal.throwIfAborted();
       elapsed(); guard(state.activeMs < config.limits.timeoutMs, "deadline");
@@ -103,7 +104,11 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
           addResult(state, call, { denied: true, reason: "write_denied" });
           state.pending.shift(); await save(); continue;
         }
-        selected.inputSchema.parse(call.input);
+        const normalizedInput = selected.inputSchema.parse(call.input);
+        if (callDecision?.approved) guard(isDeepStrictEqual(normalizedInput, callDecision.call.input), "approval_input_changed");
+        // Display and checkpoint the executable arguments, including schema
+        // defaults, before asking a person to approve the operation.
+        call.input = normalizedInput;
         let writeApproved = false;
         if (selected.kind === "write") {
           if (!callDecision) {

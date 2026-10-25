@@ -272,3 +272,37 @@ it("never carries an approval decision to another call when tool classification 
     expect(history.events.at(-1)?.type).toBe("approval_required");
   }
 });
+
+it("shows and persists normalized write arguments before requesting approval", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const tools = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string().trim(), priority: z.string().default("normal") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "normalized", input: { query: "  original  " } }), answer()]);
+  const events: RunStep[] = [];
+  const initial = await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: tools, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  expect(approval.payload.input).toEqual({ query: "original", priority: "normal" });
+  expect((await store.loadRun(initial.runId, "demo")).state.pending[0].input).toEqual(approval.payload.input);
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: tools, driver: model });
+  expect(resumed.status).toBe("completed");
+  expect(run).toHaveBeenCalledWith(approval.payload.input, expect.anything());
+});
+it("blocks approved writes when a changed schema would inject different arguments", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const original = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write", inputSchema: z.object({ query: z.string() }), run }]);
+  const changed = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string(), priority: z.string().default("urgent") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "schema-drift", input: { query: "original" } }), answer()]);
+  const events: RunStep[] = [];
+  await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: original, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: changed, driver: model });
+  expect(resumed.status).toBe("blocked"); expect(resumed.stopReason).toBe("approval_input_changed");
+  expect(run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
+});
