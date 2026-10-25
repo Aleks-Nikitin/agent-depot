@@ -154,7 +154,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
   if (!source) throw new Error("agent_not_found");
   const sourceConfig = AgentConfigSchema.parse(source.config);
   const newId = randomUUID();
-  const name = `${source.name} (copy)`;
+  const name = `${source.name.slice(0, 93)} (copy)`;
   const config = buildConfig(newId, ownerId, 1, {
     name,
     instructions: sourceConfig.instructions,
@@ -167,6 +167,10 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     await tx.agentVersion.create({
       data: { agentId: newId, version: 1, name, config },
     });
+    const cases = await tx.testCase.findMany({ where: { agentId: id }, take: 5, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    if (cases.length) await tx.testCase.createMany({ data: cases.map(test => ({ agentId: newId, input: test.input,
+      mustCall: test.mustCall, mustNotCall: test.mustNotCall, mustContain: test.mustContain, useGrader: test.useGrader,
+      expectedBehavior: test.expectedBehavior, source: test.source })) });
   });
   return getAgent(ownerId, newId);
 }

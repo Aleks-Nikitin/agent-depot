@@ -33,7 +33,6 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
   if (!found) notFound();
   const { run, now } = found;
   const trace = deriveTrace(run.events);
-  const steps = trace.totals.modelCalls + trace.totals.toolCalls;
   const words = run.input.trim().split(/\s+/).length;
 
   return (
@@ -60,7 +59,7 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
         </div>
       </div>
 
-      <RunStats run={run} totals={trace.totals} steps={steps} />
+      <RunStats run={run} totals={trace.totals} />
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-5">
