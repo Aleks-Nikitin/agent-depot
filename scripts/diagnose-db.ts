@@ -2,12 +2,13 @@ import "dotenv/config";
 import { lookup } from "node:dns/promises";
 import net from "node:net";
 import tls from "node:tls";
-import { databaseUrl } from "../lib/db/connection";
+import { databaseUrl, databaseConnectionSummary } from "../lib/db/connection";
 
 // Never authenticates or prints URLs, addresses, usernames or passwords.
 async function main() {
   let stage = "configuration";
   try {
+    console.log(JSON.stringify({ stage, ...databaseConnectionSummary() }));
     const value = databaseUrl();
     if (!value) throw new Error("missing_database_url");
     const url = new URL(value);

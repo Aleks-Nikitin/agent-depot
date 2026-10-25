@@ -38,6 +38,17 @@ This credential-free probe reports DNS resolution, TCP connection, PostgreSQL SS
 
 The diagnostic always verifies certificates and hostname using Node's trusted CAs. A certificate failure is reported at `tls_verification`, not `tcp`; investigate the trust chain rather than setting `rejectUnauthorized: false`. Local loopback Docker PostgreSQL may report `server_tls_unavailable`, since its development-only service does not enable TLS. A successful probe establishes reachability/TLS, not credential validity or migration permissions.
 
+The initial configuration record identifies the selected target/source variable, presence of username/password/database/port, whether the endpoint is local, and normalized SSL/compatibility settings. It contains no actual endpoint, database, user or secret values. Missing credentials are reported but do not prevent the credential-free network probe; authentication is a separate check.
+
+### Hosted investigation status
+
+- **Configuration:** explicit Tiger selection uses `TIGER_DATABASE_URL`. Endpoint/database/user match the downloaded service credentials; Node parsing agrees and no environment override was found. A missing `.env` password was restored privately. Authentication remains untested.
+- **Connectivity:** Node and macOS `psql` (`require`/`verify-full`) time out before TLS, as does Docker Linux `psql`. The HeavyFuel control also times out. Six IPv4 addresses resolve, no IPv6 records exist, and all explicit IPv4 probes time out. No configured proxy or connected VPN was found; this is not a comprehensive firewall exclusion.
+- **TLS:** the HeavyFuel compatibility option would change certificate verification; it was not applied. No global TLS override was enabled. [Driver SSL behavior](https://node-postgres.com/features/ssl)
+- **Verification:** owner-reported Console `SELECT 1` confirms internal SQL only. Hosted application authentication, migrations, hypertable/aggregate setup and metric write/read remain **unverified**. This branch/main have a query helper, but no monitoring HTTP route; no hosted API success is claimed.
+- **Scope:** only this Mac is available. Docker shares its egress; hotspot tests used the same device. No independent external client can distinguish device/network restrictions from service-side reachability. Resume after endpoint/network changes or an independent probe.
+- **Fallback:** `DATABASE_TARGET=local` remains selected; normal execution makes no Tiger calls. Selecting `tiger` moves the whole application database—it is not an independent optional analytics sink or automatic failover. No runtime architecture was changed to bypass the network blocker; separate hosted export/monitoring remains post-connect work.
+
 ## Monitoring server integration
 
 Call the helper after resolving the authorized session/workspace owner. The helper does not authenticate callers; never pass an arbitrary browser-provided owner ID.
