@@ -2,11 +2,14 @@ import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { RunStep } from "../contracts";
 import { withCancellation } from "./cancellation";
+import { requestOwner } from "@/lib/auth/session";
+import { HttpError } from "@/lib/auth/errors";
+export { HttpError } from "@/lib/auth/errors";
 
-export class HttpError extends Error {
-  constructor(readonly status: number, message: string) { super(message); }
-}
-export function authorize(request: Request): string {
+export async function authorize(request: Request): Promise<string> {
+  // Explicit local compatibility only. Signed-in browser requests use sessions.
+  if (process.env.RUNTIME_ALLOW_DEMO_TOKEN !== "true" || !request.headers.has("authorization")) return requestOwner(request);
+  if (process.env.NODE_ENV === "production") throw new HttpError(503, "demo_auth_disabled");
   const expected = process.env.RUNTIME_API_TOKEN;
   if (!expected || expected.length < 24) throw new HttpError(503, "runtime_auth_not_configured");
   const actual = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
@@ -48,14 +51,17 @@ export function httpError(error: unknown): Response {
   if (["approval_unavailable", "run_unavailable"].includes(reason)) return Response.json({ error: reason }, { status: 409 });
   return Response.json({ error: "runtime_unavailable" }, { status: 503 });
 }
-export function streamRun(request: Request, task: (signal: AbortSignal, emit: (event: RunStep) => void) => Promise<unknown>) {
+export function streamRun(request: Request, task: (signal: AbortSignal, emit: (event: RunStep) => void) => Promise<unknown>,
+  options: { alreadyStarted?: boolean } = {}) {
   const controller = new AbortController();
   const signal = AbortSignal.any([request.signal, controller.signal]);
   let open = true;
   const stream = new ReadableStream<Uint8Array>({
     start(writer) {
       void Promise.resolve().then(() => {
-        signal.throwIfAborted();
+        // A claimed approval has already changed durable state. Its runtime
+        // must observe cancellation and settle that state rather than be skipped.
+        if (!options.alreadyStarted) signal.throwIfAborted();
         return task(signal, event => {
         if (open) writer.enqueue(new TextEncoder().encode(JSON.stringify(event) + "\n"));
         });

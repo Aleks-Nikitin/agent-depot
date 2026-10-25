@@ -4,12 +4,18 @@ import { RunRequestSchema } from "../contracts";
 import { eventFixtures } from "../fixtures";
 
 afterEach(() => vi.unstubAllEnvs());
-it("fails closed without demo auth and ignores caller owner headers", () => {
+it("requires explicit local demo auth and ignores caller owner headers", async () => {
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
+  const authorized = new Request("http://local", { headers: { authorization: "Bearer a-long-demo-token-for-testing", "x-owner-id": "other" } });
   vi.stubEnv("RUNTIME_API_TOKEN", "");
-  expect(() => authorize(new Request("http://local"))).toThrow("runtime_auth_not_configured");
+  await expect(authorize(authorized)).rejects.toThrow("runtime_auth_not_configured");
   vi.stubEnv("RUNTIME_API_TOKEN", "a-long-demo-token-for-testing");
-  expect(() => authorize(new Request("http://local"))).toThrow("unauthorized");
-  expect(authorize(new Request("http://local", { headers: { authorization: "Bearer a-long-demo-token-for-testing", "x-owner-id": "other" } }))).toBe("demo");
+  await expect(authorize(new Request("http://local"))).rejects.toThrow("unauthorized");
+  expect(await authorize(authorized)).toBe("demo");
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "false");
+  await expect(authorize(authorized)).rejects.toThrow("unauthorized");
+  vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true"); vi.stubEnv("NODE_ENV", "production");
+  await expect(authorize(authorized)).rejects.toThrow("demo_auth_disabled");
 });
 it("rejects oversized bodies and client policy overrides", async () => {
   await expect(readBody(new Request("http://local", { method: "POST", body: "x".repeat(17000) }), RunRequestSchema)).rejects.toThrow("body_too_large");
@@ -61,6 +67,13 @@ it("does not start execution for an already disconnected request", async () => {
   const response = streamRun(new Request("http://local", { signal: controller.signal }), task);
   await expect(response.text()).rejects.toThrow("run_stream_failed");
   expect(task).not.toHaveBeenCalled();
+});
+it("hands cancellation to an already-started run so it can settle durable state", async () => {
+  const controller = new AbortController(); controller.abort();
+  const task = vi.fn(async (signal: AbortSignal) => { expect(signal.aborted).toBe(true); });
+  const response = streamRun(new Request("http://local", { signal: controller.signal }), task, { alreadyStarted: true });
+  await response.text();
+  expect(task).toHaveBeenCalledOnce();
 });
 it("propagates response-reader cancellation to the active runtime", async () => {
   let activeSignal!: AbortSignal;

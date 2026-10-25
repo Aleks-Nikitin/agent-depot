@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { isDeepStrictEqual } from "node:util";
 import { AgentConfigSchema, RunRequestSchema, type AgentConfig, type AgentRunResult, type EventInput, type RunStep } from "../contracts";
 import type { RunStore } from "../storage/prisma-store";
 import { dispatchTool, enabledTools, permittedTool, type ToolRegistry } from "../tools/registry";
@@ -59,8 +60,14 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
   let deliveryFailed = false;
   const deliver = async (event: RunStep) => {
     if (deliveryFailed) return;
-    try { await deps.onEvent?.(event); }
-    catch { deliveryFailed = true; throw new EventDeliveryError("event_delivery_failed"); }
+    const callback = deps.onEvent;
+    if (!callback) return;
+    try { await withCancellation(signal, async () => callback(event)); }
+    catch (error) {
+      deliveryFailed = true;
+      if (signal.aborted) throw error;
+      throw new EventDeliveryError("event_delivery_failed");
+    }
   };
   // Once a pause/terminal state is durable, notification failure must not try to
   // finalize that run a second time or consume a pending approval.
@@ -82,7 +89,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
-    if (decision) guard(JSON.stringify(state.pending[0]) === JSON.stringify(decision.call), "approval_call_mismatch");
+    if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     while (true) {
       signal.throwIfAborted();
       elapsed(); guard(state.activeMs < config.limits.timeoutMs, "deadline");
@@ -92,24 +99,31 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
         signal.throwIfAborted();
         const call = state.pending[0];
         const selected = permittedTool(config, deps.registry, call.toolId);
-        selected.inputSchema.parse(call.input);
         guard(state.toolCalls < config.limits.maxToolCalls, "tool_limit");
+        // The saved decision applies to this call only, even if its trusted
+        // registry classification changed while the run was paused.
+        const callDecision = decision;
+        decision = undefined;
+        if (callDecision?.approved === false || (selected.kind === "write" && state.approvalMode === "deny")) {
+          state.toolCalls++;
+          await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
+          addResult(state, call, { denied: true, reason: "write_denied" });
+          state.pending.shift(); await save(); continue;
+        }
+        const normalizedInput = selected.inputSchema.parse(call.input);
+        if (callDecision?.approved) guard(isDeepStrictEqual(normalizedInput, callDecision.call.input), "approval_input_changed");
+        // Display and checkpoint the executable arguments, including schema
+        // defaults, before asking a person to approve the operation.
+        call.input = normalizedInput;
         let writeApproved = false;
         if (selected.kind === "write") {
-          if (state.approvalMode === "deny" || decision?.approved === false) {
-            state.toolCalls++;
-            await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
-            addResult(state, call, { denied: true, reason: "write_denied" });
-            state.pending.shift(); decision = undefined; await save(); continue;
-          }
-          if (!decision) {
+          if (!callDecision) {
             elapsed();
             const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
             await deliverSettled(pause.event);
             return { runId, status: "waiting_approval", response: null, stopReason: null, usage: state.usage };
           }
           writeApproved = true;
-          decision = undefined;
         }
         state.toolCalls++;
         await save();
@@ -160,6 +174,8 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
       guard(state.usage.estimatedCostUsd <= config.limits.maxEstimatedCostUsd, "budget_limit");
       guard(turn.outputTokens! <= config.limits.maxOutputTokens, "output_limit");
       guard(turn.finishReason !== "length", "output_limit");
+      guard(turn.finishReason !== "content-filter", "model_content_filtered");
+      guard(turn.finishReason === undefined || turn.finishReason === "stop" || turn.finishReason === "tool-calls", "model_incomplete");
       if (turn.calls.length) {
         guard(turn.calls.length <= config.limits.maxToolCalls - state.toolCalls, "tool_limit");
         for (const call of turn.calls) {

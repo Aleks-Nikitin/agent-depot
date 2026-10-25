@@ -31,6 +31,22 @@ function driver(turns: ModelTurn[]): ModelDriver {
       const next = turns.shift(); if (!next) throw new Error("no_scripted_turn"); return next;
     }) };
 }
+it("blocks filtered and unsuccessful model turns before tools or final answers are accepted", async () => {
+  for (const finishReason of ["content-filter", "error", "other", "interrupted"]) {
+    for (const turn of [answer("Partial provider answer"), request({ toolId: "knowledge_search", toolCallId: "filtered", input: { query: "test" } })]) {
+      const model = driver([{ ...turn, finishReason }]);
+      const { result, events, tools } = await execute(supportAgent, model);
+      expect(result.status).toBe("blocked");
+      expect(result.stopReason).toBe(finishReason === "content-filter" ? "model_content_filtered" : "model_incomplete");
+      expect(result.response).toBeNull();
+      expect(result.usage.inputTokens).toBe(10);
+      expect(result.usage.outputTokens).toBe(5);
+      expect(tools.run).not.toHaveBeenCalled();
+      expect(events.some(event => event.type === "tool_requested")).toBe(false);
+      expect(model.turn).toHaveBeenCalledOnce();
+    }
+  }
+});
 function registry() {
   const run = vi.fn(async () => ({ text: "fixture data" }));
   return { run, tools: createRegistry(["knowledge_search", "sales_lookup", "create_ticket"].map(id => ({
@@ -240,4 +256,81 @@ it("records a failure before writes if an approval-resolution subscriber fails",
   });
   expect(result.stopReason).toBe("event_delivery_failed"); expect(initial.tools.run).not.toHaveBeenCalled();
   expect((await store.history(result.runId, "demo")).status).toBe("failed");
+});
+
+it("never carries an approval decision to another call when tool classification changes", async () => {
+  for (const approved of [true, false]) {
+    const firstRun = vi.fn(async () => ({ ok: true }));
+    const secondRun = vi.fn(async () => ({ ok: true }));
+    const makeTools = (firstKind: "read" | "write") => createRegistry([
+      { id: "create_ticket", description: "first", kind: firstKind, inputSchema: z.object({ query: z.string() }), run: firstRun },
+      { id: "second_write", description: "second", kind: "write", inputSchema: z.object({ query: z.string() }), run: secondRun },
+    ]);
+    const config = { ...supportAgent, enabledTools: ["create_ticket", "second_write"] };
+    const model = driver([request(
+      { toolId: "create_ticket", toolCallId: "reclassified-first", input: { query: "first" } },
+      { toolId: "second_write", toolCallId: "unapproved-second", input: { query: "second" } },
+    ), answer()]);
+    const events: RunStep[] = [];
+    const initial = await runAgent({ config, ownerId: "demo", message: "test" }, {
+      store, driver: model, registry: makeTools("write"), onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+    });
+    expect(initial.status).toBe("waiting_approval");
+    const approval = events.at(-1)!;
+    if (approval.type !== "approval_required") throw new Error("expected first approval");
+    const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved }, {
+      store, driver: model, registry: makeTools("read"),
+    });
+    expect(resumed.status).toBe("waiting_approval");
+    expect(firstRun).toHaveBeenCalledTimes(approved ? 1 : 0);
+    expect(secondRun).not.toHaveBeenCalled();
+    const history = await store.history(initial.runId, "demo");
+    expect(history.events.at(-1)?.type).toBe("approval_required");
+  }
+});
+
+it("shows and persists normalized write arguments before requesting approval", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const tools = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string().trim(), priority: z.string().default("normal") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "normalized", input: { query: "  original  " } }), answer()]);
+  const events: RunStep[] = [];
+  const initial = await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: tools, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  expect(approval.payload.input).toEqual({ query: "original", priority: "normal" });
+  expect((await store.loadRun(initial.runId, "demo")).state.pending[0].input).toEqual(approval.payload.input);
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: tools, driver: model });
+  expect(resumed.status).toBe("completed");
+  expect(run).toHaveBeenCalledWith(approval.payload.input, expect.anything());
+});
+it("blocks approved writes when a changed schema would inject different arguments", async () => {
+  const run = vi.fn(async () => ({ ok: true }));
+  const original = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write", inputSchema: z.object({ query: z.string() }), run }]);
+  const changed = createRegistry([{ id: "create_ticket", description: "ticket", kind: "write",
+    inputSchema: z.object({ query: z.string(), priority: z.string().default("urgent") }), run }]);
+  const model = driver([request({ toolId: "create_ticket", toolCallId: "schema-drift", input: { query: "original" } }), answer()]);
+  const events: RunStep[] = [];
+  await runAgent({ config: { ...supportAgent, enabledTools: ["create_ticket"] }, ownerId: "demo", message: "test" }, {
+    store, registry: original, driver: model, onEvent(e) { events.push(e); if (e.type === "run_started") created.push(e.runId); },
+  });
+  const approval = events.at(-1)!;
+  if (approval.type !== "approval_required") throw new Error("expected approval");
+  const resumed = await resumeAgent({ approvalId: approval.payload.approvalId, ownerId: "demo", approved: true }, { store, registry: changed, driver: model });
+  expect(resumed.status).toBe("blocked"); expect(resumed.stopReason).toBe("approval_input_changed");
+  expect(run).not.toHaveBeenCalled(); expect(model.turn).toHaveBeenCalledOnce();
+});
+
+it("enforces the run deadline even if an asynchronous event subscriber never settles", async () => {
+  const model = driver([answer()]);
+  const result = await runAgent({ config: { ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 300 } }, ownerId: "demo", message: "test" }, {
+    store, registry: registry().tools, driver: model,
+    onEvent(event) { created.push(event.runId); return new Promise<void>(() => {}); },
+  });
+  expect(result.status).toBe("failed"); expect(result.stopReason).toBe("interrupted_or_timeout");
+  expect(model.turn).not.toHaveBeenCalled();
+  const history = await store.history(result.runId, "demo");
+  expect(history.status).toBe("failed"); expect(history.events.at(-1)?.type).toBe("run_failed");
 });

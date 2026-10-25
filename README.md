@@ -2,6 +2,8 @@
 
 Next.js agent platform with Prisma ORM and PostgreSQL. Read the [Agent Runtime Engine documentation](docs/runtime-README.md) for implementation details, integration interfaces, API examples, verification, and design decisions.
 
+See [Authentication and personal workspaces](docs/auth-README.md) for Better Auth email/password, GitHub OAuth, isolated guest access, required environment settings and migrations. Signed-out visitors receive a login/signup popup before any agent, run, playground or test content is shown. Set a unique local `BETTER_AUTH_SECRET` before using the app; the example intentionally contains no secret. Stripe is not implemented in this auth milestone.
+
 ## Start locally
 
 Requirements: Node.js 22.12+ (Node 24 recommended), npm, Docker Desktop with Compose. Install Docker Desktop from [Docker's official instructions](https://docs.docker.com/desktop/) if absent, and start it before running database commands. Docker Desktop is already installed on the original development machine.
@@ -53,6 +55,8 @@ Run snapshots retain history independently of agent deletion/edits. Checkpoints 
 
 Use `.env.example` as the template. Never expose database or model credentials through `NEXT_PUBLIC_*`. Runtime execution requires the credentials/model/pricing configuration in the linked Runtime README.
 
+`DATABASE_TARGET=local` (default) uses `DATABASE_URL`. Set `DATABASE_TARGET=tiger` to use the server-only `TIGER_DATABASE_URL` for both Prisma commands and the application. Keep both URLs in your ignored environment and restart after changing the target. Selecting another database does not migrate existing records between databases.
+
 ```bash
 npm run typecheck
 npm run lint
@@ -63,6 +67,14 @@ npm run build
 
 ## Runtime integration
 
+Optional Tiger Data time-series analytics use the same PostgreSQL/Prisma stack. See [runtime metrics setup and query contracts](docs/runtime-metrics.md) for the default PostgreSQL path, TimescaleDB setup and isolated tests.
+
+`GET /api/runtime/metrics` provides session-authenticated hourly outcomes, duration, model/tool usage, token and estimated-cost aggregates. It requires bounded UTC `from`/`to` query parameters; an optional `agentId` filters the report. The linked metrics documentation describes the API, local-only legacy bearer option and temporary Tiger certificate compatibility setting. The local PostgreSQL path is verified; hosted Tiger write/read verification remains blocked before TLS.
+
 See the [Agent Runtime Engine documentation](docs/runtime-README.md) for execution, persistence, approvals, tool registration, streaming, and evaluation interfaces.
+
+The runtime engine and session authentication are implemented and verified locally. The merged playground, run-history and tests screens still use fixtures; their live data wiring remains integration work. The runtime documentation tracks the current checks and remaining integration gates. Hosted Tiger Cloud metric writes/reads remain unverified because external connections time out before TLS.
+
+`npm run typecheck` regenerates Next.js route types before checking TypeScript, so new pages/layouts pulled from teammates are included without running a full build first.
 
 `npm run dev` and `npm run build` retain Next.js's default **Turbopack**. This environment's Turbopack CSS worker currently cannot bind its internal port; the recorded webpack command is a verification fallback only, not a change to the project's stack or scripts.

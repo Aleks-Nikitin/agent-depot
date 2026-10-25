@@ -39,5 +39,7 @@ export const googleDraftGenerator: DraftGenerator = async (goal, catalog, signal
   if (inputTokens === null || outputTokens === null) throw new Error("draft_usage_unknown");
   const estimatedCostUsd = driver.estimate(inputTokens, outputTokens);
   if (estimatedCostUsd > 0.05) throw new Error("draft_budget_limit");
+  if (outputTokens > 2048 || result.finishReason === "length") throw new Error("draft_output_limit");
+  if (result.finishReason !== "stop") throw new Error("draft_model_incomplete");
   return { draft: result.output, usage: { inputTokens, outputTokens, estimatedCostUsd } };
 };
