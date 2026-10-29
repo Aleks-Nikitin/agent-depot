@@ -11,6 +11,7 @@ export async function loadAgent(id: string, ownerId: string) {
   if (config.id !== row.id || config.ownerId !== ownerId || config.version !== row.version) throw new Error("invalid_agent_record");
   return config;
 }
-export function runtimeServices() {
+export function runtimeServices(options: { live?: boolean } = {}) {
+  void options;
   return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: createGoogleDriver() };
 }

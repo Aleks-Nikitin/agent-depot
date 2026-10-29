@@ -1,3 +1,4 @@
+import { ensureWorkspace } from "./agents/workspace";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
@@ -19,6 +20,7 @@ export function createAuth() {
   return betterAuth({
     appName: "Agent Depot", baseURL: url.origin, secret,
     database: prismaAdapter(getDb(), { provider: "postgresql" }),
+    databaseHooks: { user: { create: { after: async (user) => { await ensureWorkspace(getDb(), user.id); } } } },
     emailAndPassword: { enabled: true, minPasswordLength: 8, maxPasswordLength: 128 },
     socialProviders: clientId && clientSecret ? { github: { clientId, clientSecret } } : {},
     account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },

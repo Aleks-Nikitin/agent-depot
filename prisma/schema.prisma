@@ -258,3 +258,12 @@ model TestRun {
 
   @@index([agentId, agentVersion, createdAt])
 }
+
+// One private container per owner; owner-scoped resources retain their existing IDs.
+model Workspace {
+  id        String   @id @default(uuid())
+  ownerId   String   @unique
+  name      String   @default("My workspace")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

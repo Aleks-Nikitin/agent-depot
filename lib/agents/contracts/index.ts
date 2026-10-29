@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelProfileIdSchema } from "../profiles";
 
 export const LimitsSchema = z.object({
   maxModelCalls: z.number().int().min(1).max(10).default(5),
@@ -16,6 +17,7 @@ export const AgentConfigSchema = z.object({
   instructions: z.string().min(1).max(8000),
   workspaceName: z.string().trim().min(1).max(80).optional(),
   model: z.literal("gemini"),
+  modelProfile: ModelProfileIdSchema.optional(),
   enabledTools: z.array(z.string().min(1).max(100)).max(10),
   requireWriteApproval: z.boolean().default(true),
   limits: LimitsSchema.default(() => LimitsSchema.parse({})),

@@ -1,3 +1,4 @@
+import { ensureWorkspace } from "../workspace";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
 import { AgentConfigSchema, type AgentConfig } from "@/lib/agents/contracts";
@@ -46,6 +47,7 @@ function buildConfig(
     name: input.name,
     instructions: input.instructions,
     model: "gemini",
+    ...(input.modelProfile ? { modelProfile: input.modelProfile } : {}),
     enabledTools: input.enabledTools,
     requireWriteApproval: input.requireWriteApproval,
     ...(input.workspaceName ? { workspaceName: input.workspaceName } : {}),
@@ -114,6 +116,7 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
   const config = buildConfig(id, ownerId, 1, input);
   const db = getDb();
   await db.$transaction(async (tx) => {
+    await ensureWorkspace(tx, ownerId);
     await tx.agent.create({
       data: { id, ownerId, name: input.name, version: 1, config },
     });
@@ -161,12 +164,14 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     name,
     instructions: sourceConfig.instructions,
     model: "gemini",
+    modelProfile: sourceConfig.modelProfile,
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
     requireWriteApproval: sourceConfig.requireWriteApproval,
     workspaceName: sourceConfig.workspaceName,
   });
   await db.$transaction(async (tx) => {
+    await ensureWorkspace(tx, ownerId);
     await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
     await tx.agentVersion.create({
       data: { agentId: newId, version: 1, name, config },
@@ -202,6 +207,7 @@ export async function rollbackAgent(
       name: target.name,
       instructions: targetConfig.instructions,
       model: "gemini",
+      modelProfile: targetConfig.modelProfile,
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
       requireWriteApproval: targetConfig.requireWriteApproval,
