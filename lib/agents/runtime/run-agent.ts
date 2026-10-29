@@ -1,3 +1,6 @@
+import { withoutPayloadTracing } from "./tracing";
+import { executeGraph } from "./graph-run";
+import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { modelFailureReason, toolFailureReason } from "./failures";
 import type { ModelMessage } from "ai";
 import { isDeepStrictEqual } from "node:util";
@@ -9,6 +12,9 @@ import type { Checkpoint, PendingCall } from "./state";
 import { withCancellation } from "./cancellation";
 
 export type RuntimeDependencies = {
+  legacyDriver?: () => ModelDriver;
+  driverForConfig?: (config: AgentConfig) => ModelDriver;
+  checkpointer?: () => Promise<BaseCheckpointSaver>;
   store: RunStore; registry: ToolRegistry; driver: ModelDriver;
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
@@ -29,9 +35,11 @@ export async function runAgent(options: {
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
+  if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config) };
   const state: Checkpoint = { schemaVersion: 1, messages: [{ role: "user", content: message }], pending: [], seenCallIds: [],
     writeCalls: 0, modelCalls: 0, toolCalls: 0, usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
-    startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
+    startedAt: Date.now(), activeMs: 0,
+    ...(deps.checkpointer ? { graphVersion: 1 as const, toolResults: {} } : {}), approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key };
   const run = await deps.store.createRun(config, state);
   return continueRun(run.id, options.ownerId, deps, undefined, "run_started");
 }
@@ -50,6 +58,10 @@ export async function resumeClaimedRun(claim: Awaited<ReturnType<RunStore["claim
 async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies,
   decision?: { call: PendingCall; approved: boolean }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
+  if (loaded.state.graphVersion === 1) {
+    if (!deps.checkpointer) throw new Error("graph_checkpointer_missing");
+    return withoutPayloadTracing(() => executeGraph(runId, ownerId, deps, decision, openingEvent));
+  }
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
   let version = loaded.version;
@@ -90,6 +102,7 @@ async function continueRun(runId: string, ownerId: string, deps: RuntimeDependen
   try {
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
+    if (deps.legacyDriver) deps = { ...deps, driver: deps.legacyDriver() };
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
     if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     while (true) {

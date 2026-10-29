@@ -8,6 +8,8 @@ export const PendingCallSchema = z.object({
 export type PendingCall = z.infer<typeof PendingCallSchema>;
 export const CheckpointSchema = z.object({
   schemaVersion: z.literal(1),
+  graphVersion: z.literal(1).optional(),
+  toolResults: z.record(z.string(), z.unknown()).optional(),
   messages: z.array(z.custom<ModelMessage>()),
   pending: z.array(PendingCallSchema),
   seenCallIds: z.array(z.string()),

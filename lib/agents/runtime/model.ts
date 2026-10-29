@@ -12,6 +12,7 @@ export type ModelTurn = {
   finishReason?: string;
 };
 export interface ModelDriver {
+  chatModel?: import("@langchain/core/language_models/chat_models").BaseChatModel;
   key: string;
   estimate(inputTokens: number, outputTokens: number): number;
   turn(config: AgentConfig, messages: ModelMessage[], tools: ToolDefinition[], signal: AbortSignal): Promise<ModelTurn>;

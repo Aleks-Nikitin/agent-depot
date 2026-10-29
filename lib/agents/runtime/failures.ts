@@ -2,8 +2,9 @@ import { APICallError } from "ai";
 
 /** Stable public reasons only. Never persist provider bodies, URLs or exception messages. */
 export function modelFailureReason(error: unknown): string {
-  if (APICallError.isInstance(error)) {
-    const status = error.statusCode;
+  const nativeStatus = error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined;
+  if (APICallError.isInstance(error) || nativeStatus !== undefined) {
+    const status = APICallError.isInstance(error) ? error.statusCode : nativeStatus;
     if (status === 401 || status === 403) return "model_access_denied";
     if (status === 429) return "model_rate_limited";
     if (status === 404) return "model_not_found";

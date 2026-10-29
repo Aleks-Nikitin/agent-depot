@@ -4,6 +4,10 @@ Implementation documentation for the agent runtime engine: execution flow, tool 
 
 See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitoring query contracts and sponsor integration ownership.
 
+## LangChain adapter update
+
+New service-created runs now execute through LangChain `createAgent` with PostgreSQL graph checkpoints, while preserving the existing event and service contracts. Run `npm run runtime:setup` after application migrations. See [adapter setup, profiles, tracing and verification limits](langchain-runtime.md). The execution-loop/AI SDK sections below describe the retained legacy compatibility path; AI SDK drafting and grading remain in use.
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.
