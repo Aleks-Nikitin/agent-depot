@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { databaseUrl, databaseConnectionSummary } from "../../db/connection";
@@ -15,6 +15,7 @@ import type { ModelDriver, ModelTurn } from "./model";
 import type { AgentConfig, RunStep } from "../contracts";
 
 if (!databaseConnectionSummary().localEndpoint) throw new Error("local_database_required");
+beforeEach(() => { vi.stubEnv("LANGCHAIN_TRACING_V2", "false"); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const db = getDb();
 const store = new PrismaRunStore(db);

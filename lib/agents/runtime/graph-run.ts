@@ -75,6 +75,18 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
   };
   state.toolResults ??= {};
   let finalText = "";
+  // LangGraph can reject on abort before application middleware finishes its
+  // durable settlement. Drain our wrappers before writing terminal state.
+  const inFlight = new Set<Promise<unknown>>();
+  function track<T>(operation: () => Promise<T>): Promise<T> {
+    const task = operation();
+    inFlight.add(task);
+    void task.then(() => inFlight.delete(task), () => inFlight.delete(task));
+    return task;
+  }
+  async function drain() {
+    while (inFlight.size) await Promise.allSettled([...inFlight]);
+  }
   try {
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
@@ -88,7 +100,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
     let stopped: unknown;
     const middleware = createMiddleware({
       name: "application-policy-v1",
-      wrapModelCall: async (request, handler) => {
+      wrapModelCall: (request, handler) => track(async () => {
         signal.throwIfAborted(); elapsed();
         guard(state.activeMs < config.limits.timeoutMs, "deadline");
         const tools = enabledTools(config, deps.registry);
@@ -130,48 +142,54 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
 
         return nativeResponse ?? new AIMessage({ content: turn.text, tool_calls: turn.calls.map(c => ({ id: c.toolCallId, name: c.toolId, args: c.input as Record<string, unknown>, type: "tool_call" as const })) });
 
-      },
-      wrapToolCall: async (request) => {
-        const execute = async () => {
-          if (stopped) throw stopped;
-          const id = request.toolCall.id!;
-          if (Object.hasOwn(state.toolResults!, id)) return new ToolMessage({ tool_call_id: id, content: JSON.stringify(state.toolResults![id]) });
-          const current = state.pending[0];
-          guard(!!current && current.toolCallId === id, "approval_call_mismatch");
-          const selected = permittedTool(config, deps.registry, current.toolId);
+      }),
+      wrapToolCall: (request) => track(async () => {
+        signal.throwIfAborted();
+        const id = request.toolCall.id!;
+        if (Object.hasOwn(state.toolResults!, id)) return new ToolMessage({ tool_call_id: id, content: JSON.stringify(state.toolResults![id]) });
+        const current = state.pending.find(call => call.toolCallId === id);
+        guard(!!current, "approval_call_mismatch");
+        const selected = permittedTool(config, deps.registry, current.toolId);
+        const denied = selected.kind === "write" && state.approvalMode === "deny";
+        const matchingDecision = decision?.call.toolCallId === id ? decision : undefined;
+        if (!denied) {
           const input = selected.inputSchema.safeParse(current.input);
           if (!input.success) throw new ExecutionFailure("invalid_tool_input");
+          if (matchingDecision?.approved) guard(isDeepStrictEqual(input.data, matchingDecision.call.input), "approval_input_changed");
           current.input = input.data;
-          const needsReview = selected.kind === "write" && state.approvalMode !== "deny" &&
-            ((config.requireWriteApproval && !selected.approvalExempt) || !selected.automaticWrites || (selected.canAutoWrite ? !selected.canAutoWrite(current.input) : false));
-          if (needsReview) {
-            // Graph persists the interrupt before the application exposes approval.
-            const callHash = approvalHash(ownerId, runId, current);
-            const reply = interrupt<PendingCall & { callHash: string }, { approved: boolean; callHash: string }>({ ...current, callHash });
-            guard(!!decision && reply.approved === decision.approved && reply.callHash === callHash
-              && decision.inputHash === callHash && isDeepStrictEqual(current, decision.call), "approval_call_mismatch");
-          }
-          const output = await executeTool();
+        }
+        const needsReview = !denied && (matchingDecision || (selected.kind === "write" &&
+          ((config.requireWriteApproval && !selected.approvalExempt) || !selected.automaticWrites || (selected.canAutoWrite ? !selected.canAutoWrite(current.input) : false))));
+        if (needsReview) {
+          // Each v2 tool task owns its interrupt ID. A resume targets only that task.
+          const callHash = approvalHash(ownerId, runId, current);
+          const reply = interrupt<PendingCall & { callHash: string }, { approved: boolean; callHash: string }>({ ...current, callHash });
+          guard(!!matchingDecision && reply.approved === matchingDecision.approved && reply.callHash === callHash
+            && matchingDecision.inputHash === callHash && isDeepStrictEqual(current, matchingDecision.call), "approval_call_mismatch");
+        }
+        const execute = async () => {
+          signal.throwIfAborted();
+          if (stopped) throw stopped;
+          const output = await executeTool(current);
           return new ToolMessage({ tool_call_id: id, content: JSON.stringify(output) });
         };
         const next = queue.then(execute);
         queue = next.catch(error => { stopped = error; });
         return next;
-      },
+      }),
     });
-    async function executeTool() {
-      const call = state.pending[0];
+    async function executeTool(call: PendingCall) {
       const selected = permittedTool(config, deps.registry, call.toolId);
       guard(state.toolCalls < config.limits.maxToolCalls, "tool_limit");
       // The saved decision applies to this call only, even if its trusted
       // registry classification changed while the run was paused.
-      const callDecision = decision;
-      decision = undefined;
+      const callDecision = decision?.call.toolCallId === call.toolCallId ? decision : undefined;
+      if (callDecision) decision = undefined;
       if (callDecision?.approved === false || (selected.kind === "write" && state.approvalMode === "deny")) {
         state.toolCalls++;
         await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
         addResult(state, call, { denied: true, reason: "write_denied" });
-        state.pending.shift(); state.toolResults![call.toolCallId] = { denied: true, reason: "write_denied" }; await save(); return { denied: true, reason: "write_denied" };
+        state.pending = state.pending.filter(pending => pending.toolCallId !== call.toolCallId); state.toolResults![call.toolCallId] = { denied: true, reason: "write_denied" }; await save(); return { denied: true, reason: "write_denied" };
       }
       if (selected.retired) throw new ExecutionFailure("email_removed");
       if (selected.unavailable?.()) throw new ExecutionFailure(selected.unavailable()!);
@@ -204,7 +222,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
         await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason } });
         throw new ExecutionFailure(reason);
       }
-      addResult(state, call, output); state.pending.shift(); state.toolResults![call.toolCallId] = output; await save();
+      addResult(state, call, output); state.pending = state.pending.filter(pending => pending.toolCallId !== call.toolCallId); state.toolResults![call.toolCallId] = output; await save();
       await emit({ type: "tool_finished", payload: { toolCallId: call.toolCallId, toolId: call.toolId, output, durationMs: Date.now() - started } });
 
       return output;
@@ -216,10 +234,16 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       model: deps.driver.chatModel ?? new MiddlewareModel({}),
       systemPrompt: config.instructions + "\nOnly claim actions supported by successful tool results. Unavailable tools cannot execute.", tools, middleware: [middleware], checkpointer,
     });
-    const result = await withoutPayloadTracing(() => agent.invoke(decision ? new Command({ resume: { approved: decision.approved, callHash: decision.inputHash } }) : { messages: [{ role: "user", content: String(state.messages[0].content) }] }, graphConfig));
+    const result = await withoutPayloadTracing(() => agent.invoke(decision ? new Command({ resume: state.approvalInterruptId
+      ? { [state.approvalInterruptId]: { approved: decision.approved, callHash: decision.inputHash } }
+      : { approved: decision.approved, callHash: decision.inputHash } }) : { messages: [{ role: "user", content: String(state.messages[0].content) }] }, graphConfig));
     if (result.__interrupt__?.length) {
       const call = state.pending[0];
       guard(!!call, "approval_call_mismatch");
+      const callHash = approvalHash(ownerId, runId, call);
+      const pendingInterrupt = result.__interrupt__.find(item => (item.value as { callHash?: string }).callHash === callHash);
+      guard(!!pendingInterrupt?.id, "approval_call_mismatch");
+      state.approvalInterruptId = pendingInterrupt.id;
       elapsed();
       const pause = await deps.store.pauseForApproval(runId, ownerId, version, state, call);
       await deliverSettled(pause.event);
@@ -227,6 +251,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
     }
     return finish("completed", finalText, null);
   } catch (caught) {
+    await drain();
     let error: unknown = caught;
     for (let i = 0; i < 8; i++) {
       if (MiddlewareError.isInstance(error) && error.cause) error = error.cause;

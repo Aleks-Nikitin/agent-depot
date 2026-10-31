@@ -6,7 +6,7 @@ See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitor
 
 ## LangChain adapter update
 
-New service-created runs now execute through LangChain `createAgent` with PostgreSQL graph checkpoints, while preserving the existing event and service contracts. Run `npm run runtime:setup` after application migrations. See [adapter setup, profiles, tracing and verification limits](langchain-runtime.md). The execution-loop/AI SDK sections below describe the retained legacy compatibility path; AI SDK drafting and grading remain in use.
+New service-created runs now execute through LangChain `createAgent` with PostgreSQL graph checkpoints, while preserving the existing event and service contracts. Run `npm run runtime:setup` after application migrations. See [adapter setup, profiles, tracing and verification limits](langchain-runtime.md). The older execution-loop/AI SDK descriptions below are historical: the bespoke orchestration loop has been removed. AI SDK drafting and grading remain in use. Old non-graph checkpoints remain readable but cannot resume effects.
 
 ## Current implementation status
 

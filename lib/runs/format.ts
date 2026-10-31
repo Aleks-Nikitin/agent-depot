@@ -70,6 +70,7 @@ const reasons: Record<string, string> = {
   ticket_not_found: "The support ticket does not exist in this workspace",
   step_limit: "Step limit reached", tool_limit: "Tool-call limit reached", budget_limit: "Cost cap reached",
   usage_unknown: "Provider did not report usage", context_limit: "Context too large", output_limit: "Output limit reached",
+  checkpoint_upgrade_required: "This older run cannot safely resume after the runtime upgrade. Review any completed actions before starting a new run",
   model_policy_changed: "Model or pricing changed while paused", interrupted_or_timeout: "Run timed out or was interrupted",
   model_access_denied: "The model provider rejected the API key or this model's permissions. Ask the workspace administrator to check Gemini access",
   model_rate_limited: "The model provider's request or usage quota was reached. Wait and try again, or ask the administrator to check the quota",
