@@ -1,3 +1,4 @@
+import { approvalHash } from "../runtime/approval-hash";
 import type { PrismaClient, Prisma } from "../../../generated/prisma/client";
 import { AgentConfigSchema, RunStepSchema, type AgentConfig, type EventInput, type RunStep } from "../contracts";
 import { CheckpointSchema, type Checkpoint, type PendingCall } from "../runtime/state";
@@ -40,7 +41,7 @@ export class PrismaRunStore {
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { checkpoint: json(state), status: "waiting_approval", version: { increment: 1 } } });
       if (updated.count !== 1) throw new Error("stale_checkpoint");
-      const approval = await tx.approval.create({ data: { runId, ...call, input: json(call.input), expiresAt: new Date(Date.now() + 15 * 60_000) } });
+      const approval = await tx.approval.create({ data: { runId, ...call, input: json(call.input), inputHash: approvalHash(ownerId, runId, call), expiresAt: new Date(Date.now() + 15 * 60_000) } });
       const event = await insertEvent(tx, runId, ownerId, { type: "approval_required", payload: {
         ...call, approvalId: approval.id, expiresAt: approval.expiresAt.toISOString(),
       } });
@@ -51,10 +52,19 @@ export class PrismaRunStore {
     return this.db.$transaction(async tx => {
       const approval = await tx.approval.findFirst({ where: { id: approvalId, run: { ownerId } } });
       if (!approval) throw new Error("approval_not_found");
-      const claim = await tx.approval.updateMany({ where: { id: approvalId, status: "pending", expiresAt: { gt: new Date() } },
+      if (approval.status !== "pending" || approval.expiresAt.getTime() <= Date.now()) throw new Error("approval_unavailable");
+      const run = await tx.agentRun.findFirstOrThrow({ where: { id: approval.runId, ownerId } });
+      const state = CheckpointSchema.parse(run.checkpoint);
+      const call = { toolCallId: approval.toolCallId, toolId: approval.toolId, input: approval.input };
+      if (!approval.inputHash || approval.inputHash !== approvalHash(ownerId, run.id, call)
+        || !state.pending[0] || approvalHash(ownerId, run.id, state.pending[0]) !== approval.inputHash) {
+        throw new Error("approval_call_mismatch");
+      }
+      const claim = await tx.approval.updateMany({ where: { id: approvalId, inputHash: approval.inputHash,
+        input: { equals: json(approval.input) }, status: "pending", expiresAt: { gt: new Date() } },
         data: { status: approved ? "approved" : "rejected", decidedAt: new Date(), decidedBy: ownerId } });
       if (claim.count !== 1) throw new Error("approval_unavailable");
-      const runClaim = await tx.agentRun.updateMany({ where: { id: approval.runId, ownerId, status: "waiting_approval" },
+      const runClaim = await tx.agentRun.updateMany({ where: { id: approval.runId, ownerId, version: run.version, status: "waiting_approval" },
         data: { status: "running", version: { increment: 1 } } });
       if (runClaim.count !== 1) throw new Error("run_unavailable");
       const event = await insertEvent(tx, approval.runId, ownerId, { type: "approval_resolved", payload: {

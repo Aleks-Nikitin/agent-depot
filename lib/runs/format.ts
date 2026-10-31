@@ -63,6 +63,7 @@ const reasons: Record<string, string> = {
   forbidden: "This action is not allowed in your workspace. Check that you are signed in to the right account",
   not_found: "This agent or run is not available in your workspace. Open your agent list and choose an existing agent",
   approval_unavailable: "This review has expired or was already decided. Reload the saved run to see its latest state",
+  approval_call_mismatch: "This approval no longer matches the saved action. Start a new run for a fresh review",
   run_unavailable: "This run is no longer active. Reload its history before starting another request",
   invalid_body: "The request was invalid. Check your message and try again",
   write_limit: "Write-action limit reached",

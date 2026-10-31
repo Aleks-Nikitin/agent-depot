@@ -1,3 +1,4 @@
+import { approvalHash } from "./approval-hash";
 import { modelFailureReason, toolFailureReason } from "./failures";
 import type { ModelMessage } from "ai";
 import { isDeepStrictEqual } from "node:util";
@@ -34,7 +35,7 @@ function addResult(state: Checkpoint, call: PendingCall, output: unknown) {
     toolName: call.toolId, output: { type: "json", value: JSON.parse(JSON.stringify(output)) } }] });
 }
 export async function executeGraph(runId: string, ownerId: string, deps: RuntimeDependencies,
-  decision?: { call: PendingCall; approved: boolean }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
+  decision?: { call: PendingCall; approved: boolean; inputHash?: string | null }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
@@ -168,8 +169,10 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
             ((config.requireWriteApproval && !selected.approvalExempt) || !selected.automaticWrites || (selected.canAutoWrite ? !selected.canAutoWrite(current.input) : false));
           if (needsReview) {
             // Graph persists the interrupt before the application exposes approval.
-            const approved = interrupt<PendingCall, boolean>({ ...current });
-            guard(!!decision && approved === decision.approved && isDeepStrictEqual(current, decision.call), "approval_call_mismatch");
+            const callHash = approvalHash(ownerId, runId, current);
+            const reply = interrupt<PendingCall & { callHash: string }, { approved: boolean; callHash: string }>({ ...current, callHash });
+            guard(!!decision && reply.approved === decision.approved && reply.callHash === callHash
+              && decision.inputHash === callHash && isDeepStrictEqual(current, decision.call), "approval_call_mismatch");
           }
           const output = await executeTool();
           return new ToolMessage({ tool_call_id: id, content: JSON.stringify(output) });
@@ -236,7 +239,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       model: deps.driver.chatModel ?? new MiddlewareModel({}),
       systemPrompt: config.instructions + "\nOnly claim actions supported by successful tool results. Unavailable tools cannot execute.", tools, middleware: [middleware], checkpointer,
     });
-    const result = await withoutPayloadTracing(() => agent.invoke(decision ? new Command({ resume: decision.approved }) : { messages: [{ role: "user", content: String(state.messages[0].content) }] }, graphConfig));
+    const result = await withoutPayloadTracing(() => agent.invoke(decision ? new Command({ resume: { approved: decision.approved, callHash: decision.inputHash } }) : { messages: [{ role: "user", content: String(state.messages[0].content) }] }, graphConfig));
     if (result.__interrupt__?.length) {
       const call = state.pending[0];
       guard(!!call, "approval_call_mismatch");

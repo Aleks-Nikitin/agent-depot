@@ -181,6 +181,7 @@ model Approval {
   toolCallId String
   toolId     String
   input      Json
+  inputHash  String?
   status     ApprovalStatus @default(pending)
   expiresAt  DateTime
   decidedAt  DateTime?

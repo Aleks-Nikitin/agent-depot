@@ -51,12 +51,12 @@ export async function resumeAgent(options: { approvalId: string; ownerId: string
 
 export async function resumeClaimedRun(claim: Awaited<ReturnType<RunStore["claimApproval"]>>, ownerId: string, approved: boolean, deps: RuntimeDependencies) {
   return continueRun(claim.approval.runId, ownerId, deps, {
-    call: { toolCallId: claim.approval.toolCallId, toolId: claim.approval.toolId, input: claim.approval.input }, approved,
+    call: { toolCallId: claim.approval.toolCallId, toolId: claim.approval.toolId, input: claim.approval.input }, approved, inputHash: claim.approval.inputHash,
   }, claim.event);
 }
 
 async function continueRun(runId: string, ownerId: string, deps: RuntimeDependencies,
-  decision?: { call: PendingCall; approved: boolean }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
+  decision?: { call: PendingCall; approved: boolean; inputHash?: string | null }, openingEvent?: RunStep | "run_started"): Promise<AgentRunResult> {
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.state.graphVersion === 1) {
     if (!deps.checkpointer) throw new Error("graph_checkpointer_missing");
