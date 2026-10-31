@@ -20,6 +20,6 @@ Brevo, Slack and Discord integrations were canceled. No webhook, provider, notif
 
 New runs persist stable safe reasons for Gemini access, quota, model availability, bad requests, network problems and unusable responses. Tool setup, quota and service errors retain their distinct reasons. Chat, traces and saved runs translate these into explanations and next steps. Provider bodies, keys and raw exception messages are never copied into run events.
 
-A failure after creating a ticket does not undo that ticket. The chat shows completed ticket actions and links to their records so a user can check before retrying. There are no automatic billable model retries.
+A failure after creating a ticket does not undo that ticket. The chat shows completed ticket actions and links to their records so a user can check before retrying. Configured transient provider failures may retry or use an explicitly approved fallback within per-run call/time/spend limits. Each request has a persisted reservation and attempt record. Completed tools are not replayed. See [runtime recovery](langchain-runtime.md).
 
 The supplied run `8c45a590-17fb-4403-b657-c53c5fb6f4f6` stopped during its first model request, before any tool call. It only recorded `execution_failed`, so its original provider cause cannot be recovered from the export. A later request using that saved configuration reached Gemini successfully. This does not prove why the historical request failed. Local live search was also unconfigured during the audit, separately preventing a real whey-protein price comparison.

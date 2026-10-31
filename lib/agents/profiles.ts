@@ -14,7 +14,7 @@ export function modelProfileId(config: { model: "gemini"; modelProfile?: ModelPr
 export function resolveProfile(id: ModelProfileId, env: Record<string, string | undefined> = process.env) {
   const spec = providerProfiles[id];
   const google = spec.provider === "google";
-  const model = z.string().min(1).parse(google ? env.RUNTIME_MODEL_ID : env.OPENAI_RUNTIME_MODEL_ID);
+  const model = z.string().min(1).max(100).parse(google ? env.RUNTIME_MODEL_ID : env.OPENAI_RUNTIME_MODEL_ID);
   const rates = z.object({ input: z.coerce.number().positive(), output: z.coerce.number().positive() }).parse({
     input: google ? env.RUNTIME_INPUT_USD_PER_MILLION : env.OPENAI_RUNTIME_INPUT_USD_PER_MILLION,
     output: google ? env.RUNTIME_OUTPUT_USD_PER_MILLION : env.OPENAI_RUNTIME_OUTPUT_USD_PER_MILLION,

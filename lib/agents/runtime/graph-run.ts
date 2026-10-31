@@ -1,5 +1,7 @@
 import { approvalHash } from "./approval-hash";
-import { modelFailureReason, toolFailureReason } from "./failures";
+import { modelWithRecovery } from "./model-recovery";
+import { PolicyBlock, ExecutionFailure, guard } from "./errors";
+import { toolFailureReason } from "./failures";
 import type { ModelMessage } from "ai";
 import { isDeepStrictEqual } from "node:util";
 import { type AgentRunResult, type EventInput, type RunStep } from "../contracts";
@@ -24,12 +26,7 @@ class MiddlewareModel extends BaseChatModel {
   async _generate(): Promise<ChatResult> { throw new Error("model_middleware_required"); }
   bindTools() { return this; }
 }
-class PolicyBlock extends Error {}
-class ExecutionFailure extends Error {}
 class EventDeliveryError extends Error {}
-function guard(condition: boolean, reason: string): asserts condition {
-  if (!condition) throw new PolicyBlock(reason);
-}
 function addResult(state: Checkpoint, call: PendingCall, output: unknown) {
   state.messages.push({ role: "tool", content: [{ type: "tool-result", toolCallId: call.toolCallId,
     toolName: call.toolId, output: { type: "json", value: JSON.parse(JSON.stringify(output)) } }] });
@@ -94,45 +91,25 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       wrapModelCall: async (request, handler) => {
         signal.throwIfAborted(); elapsed();
         guard(state.activeMs < config.limits.timeoutMs, "deadline");
-        guard(state.usage.estimatedCostUsd !== null, "usage_unknown");
-        guard(state.usage.estimatedCostUsd < config.limits.maxEstimatedCostUsd, "budget_limit");
-        guard(state.modelCalls < config.limits.maxModelCalls, "step_limit");
         const tools = enabledTools(config, deps.registry);
         // Conservative text estimate: full UTF-8 byte size plus schema/prompt margin.
         // This is explicitly an estimate, not a provider invoice guarantee.
         const bytes = Buffer.byteLength(JSON.stringify({ instructions: config.instructions, messages: state.messages,
           tools: tools.map(t => ({ id: t.id, description: t.description, schema: t.inputSchema.toJSONSchema() })) }));
         guard(bytes <= 100_000, "context_limit");
-        const reserved = deps.driver.estimate(bytes + 4096, config.limits.maxOutputTokens);
-        guard(Number.isFinite(reserved) && reserved >= 0, "pricing_unknown");
-        guard(state.usage.estimatedCostUsd! + reserved <= config.limits.maxEstimatedCostUsd, "budget_limit");
-        const previousUsage = { ...state.usage };
-        // Persist a conservative reservation before dispatch: an interrupted call
-        // may still be billed and must not appear as free in saved history.
-        state.usage = { inputTokens: null, outputTokens: null, estimatedCostUsd: previousUsage.estimatedCostUsd! + reserved };
-        state.modelCalls++; await save();
-        await emit({ type: "model_started", payload: { step: state.modelCalls } });
-        let nativeResponse: AIMessage | undefined;
-        const turn = await withCancellation(signal, async () => {
-          if (!deps.driver.chatModel) return deps.driver.turn(config, state.messages as ModelMessage[], tools, signal);
-          nativeResponse = await handler(request);
-          return nativeModelTurn(nativeResponse);
-        }).catch(error => { throw new ExecutionFailure(modelFailureReason(error)); });
-        signal.throwIfAborted();
-        const usageKnown = turn.inputTokens !== null && turn.outputTokens !== null
-          && Number.isFinite(turn.inputTokens) && Number.isFinite(turn.outputTokens)
-          && turn.inputTokens >= 0 && turn.outputTokens >= 0;
-        const cost = usageKnown ? deps.driver.estimate(turn.inputTokens!, turn.outputTokens!) : null;
-        state.usage = {
-          inputTokens: usageKnown ? previousUsage.inputTokens! + turn.inputTokens! : null,
-          outputTokens: usageKnown ? previousUsage.outputTokens! + turn.outputTokens! : null,
-          estimatedCostUsd: cost !== null && Number.isFinite(cost) && cost >= 0 ? previousUsage.estimatedCostUsd! + cost : null,
-        };
+        const { turn, nativeResponse } = await modelWithRecovery({
+          config, state, driver: deps.driver, bytes, signal, emit,
+          beforeAttempt: () => { elapsed(); guard(state.activeMs < config.limits.timeoutMs, "deadline"); },
+          reserve: async attempt => { elapsed(); version = await deps.store.reserveModelAttempt(runId, ownerId, version, state, attempt); },
+          settle: async (attempt, result) => { elapsed(); version = await deps.store.settleModelAttempt(runId, ownerId, version, state, attempt, result); },
+          invoke: async active => {
+            if (!active.chatModel) return { turn: await active.turn(config, state.messages as ModelMessage[], tools, signal) };
+            const nativeResponse = await handler({ ...request, model: active.chatModel });
+            return { turn: nativeModelTurn(nativeResponse), nativeResponse };
+          },
+        });
         state.messages.push(...turn.messages);
         await save();
-        await emit({ type: "model_finished", payload: { inputTokens: turn.inputTokens, outputTokens: turn.outputTokens, estimatedCostUsd: cost } });
-        guard(state.usage.estimatedCostUsd !== null, "usage_unknown");
-        guard(state.usage.estimatedCostUsd <= config.limits.maxEstimatedCostUsd, "budget_limit");
         guard(turn.outputTokens! <= config.limits.maxOutputTokens, "output_limit");
         guard(turn.finishReason !== "length", "output_limit");
         guard(turn.finishReason !== "content-filter", "model_content_filtered");

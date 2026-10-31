@@ -3,7 +3,8 @@ import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
 import type { AIMessage } from "@langchain/core/messages";
 import type { AgentConfig } from "../contracts";
-import { modelProfileId, resolveProfile } from "../profiles";
+import { z } from "zod";
+import { ModelProfileIdSchema, modelProfileId, resolveProfile, type ModelProfileId } from "../profiles";
 import { googleThinkingConfig, type ModelDriver, type ModelTurn } from "./model";
 
 // Preserve raw billing fields: the SDK otherwise fills missing counts with zero
@@ -25,8 +26,8 @@ class BoundedGoogleModel extends ChatGoogleGenerativeAI {
     return result;
   }
 }
-export function createProfileDriver(config: AgentConfig): ModelDriver {
-  const profile = resolveProfile(modelProfileId(config));
+function nativeProfileDriver(config: AgentConfig, id: ModelProfileId): ModelDriver {
+  const profile = resolveProfile(id);
   const chatModel = profile.provider === "google"
     ? new BoundedGoogleModel({ model: profile.model, apiKey: profile.apiKey,
       maxOutputTokens: config.limits.maxOutputTokens, maxRetries: 0,
@@ -38,10 +39,22 @@ export function createProfileDriver(config: AgentConfig): ModelDriver {
       maxTokens: config.limits.maxOutputTokens, maxRetries: 0 });
   return {
     key: `${profile.id}:${profile.model}:${profile.rates.input}:${profile.rates.output}:langchain-v1`,
-    chatModel,
+    chatModel, identity: { profile: profile.id, provider: profile.provider, model: profile.model },
     estimate: (input, output) => (input * profile.rates.input + output * profile.rates.output) / 1_000_000,
     async turn() { throw new Error("native_model_requires_graph"); },
   };
+}
+export function createProfileDriver(config: AgentConfig): ModelDriver {
+  const id = modelProfileId(config);
+  const primary = nativeProfileDriver(config, id);
+  const selected = config.fallbackModelProfile ?? process.env.RUNTIME_FALLBACK_PROFILE;
+  const fallbackId = selected ? ModelProfileIdSchema.parse(selected) : undefined;
+  if (fallbackId === id) throw new Error("invalid_fallback_profile");
+  const fallback = fallbackId ? nativeProfileDriver(config, fallbackId) : undefined;
+  const maxRetries = z.coerce.number().int().min(0).max(2).parse(process.env.RUNTIME_MODEL_MAX_RETRIES ?? "1");
+  primary.recovery = { maxRetries, fallback };
+  primary.key += `:recovery-v1:${maxRetries}:${fallback?.key ?? "none"}`;
+  return primary;
 }
 export function nativeModelTurn(message: AIMessage): ModelTurn {
   const raw = message.response_metadata.runtimeUsage ?? message.additional_kwargs.runtimeUsage;

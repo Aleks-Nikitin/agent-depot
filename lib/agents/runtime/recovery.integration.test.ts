@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { afterAll, expect, it, vi } from "vitest";
+import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { databaseUrl, databaseConnectionSummary } from "../../db/connection";
@@ -8,11 +8,14 @@ import { getDb } from "../../db/prisma";
 import { PrismaRunStore } from "../storage/prisma-store";
 import { createRegistry } from "../tools/registry";
 import { supportAgent } from "../fixtures";
+import { createProfileDriver } from "./provider-model";
+import { deriveTrace } from "../../playground/reduce-events";
 import { runAgent, resumeAgent } from "./run-agent";
 import type { ModelDriver, ModelTurn } from "./model";
 import type { AgentConfig, RunStep } from "../contracts";
 
 if (!databaseConnectionSummary().localEndpoint) throw new Error("local_database_required");
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 const db = getDb();
 const store = new PrismaRunStore(db);
 const ownerId = `recovery-${randomUUID()}`;
@@ -75,4 +78,66 @@ it("binds approval to normalized arguments, rejects tampering, and resumes once 
   expect(result.status).toBe("completed"); expect(write).toHaveBeenCalledOnce();
   await expect(resumeAgent({ ownerId, approvalId, approved: true }, deps)).rejects.toThrow("approval_unavailable");
   expect(await db.demoTicket.count({ where: { ownerId, idempotencyKey: `${paused.runId}:ticket` } })).toBe(1);
+});
+
+it("falls back after bounded primary retries without repeating a committed ticket and accounts for every attempt", async () => {
+  vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "test-only-key");
+  vi.stubEnv("RUNTIME_MODEL_ID", "gemini-3.1-flash-lite");
+  vi.stubEnv("RUNTIME_INPUT_USD_PER_MILLION", "0.25"); vi.stubEnv("RUNTIME_OUTPUT_USD_PER_MILLION", "1.5");
+  vi.stubEnv("OPENAI_API_KEY", "test-only-key"); vi.stubEnv("OPENAI_RUNTIME_MODEL_ID", "gpt-test");
+  vi.stubEnv("OPENAI_RUNTIME_INPUT_USD_PER_MILLION", "1"); vi.stubEnv("OPENAI_RUNTIME_OUTPUT_USD_PER_MILLION", "2");
+  vi.stubEnv("RUNTIME_MODEL_MAX_RETRIES", "1"); vi.stubEnv("LANGCHAIN_TRACING_V2", "false");
+  let googleCalls = 0;
+  let fallbackBody: { messages: { role: string }[] } | undefined;
+  const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    if (String(url).includes("generativelanguage.googleapis.com")) {
+      if (++googleCalls > 1) return Response.json({ error: { code: 503, message: "private provider response", status: "UNAVAILABLE" } }, { status: 503 });
+      return Response.json({ candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "create_ticket", args: { subject: "Original" } } }] }, finishReason: "STOP" }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 } });
+    }
+    expect(String(url)).toContain("api.openai.com");
+    fallbackBody = JSON.parse(init!.body as string);
+    return Response.json({ id: "test-completion", object: "chat.completion", created: 0, model: "gpt-test",
+      choices: [{ index: 0, message: { role: "assistant", content: "Ticket created" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
+  });
+  vi.stubGlobal("fetch", fetch);
+  const primary = createProfileDriver({ ...supportAgent, fallbackModelProfile: "openai-fallback" });
+  const { config, deps, events, write } = await fixture(primary);
+  config.fallbackModelProfile = "openai-fallback";
+  const result = await runAgent({ config, ownerId, message: "Create a ticket" }, deps);
+  expect(result.status).toBe("completed"); expect(write).toHaveBeenCalledOnce();
+  expect(googleCalls).toBe(3); expect(fetch).toHaveBeenCalledTimes(4);
+  expect(events.filter(e => e.type === "model_recovery").map(e => e.payload.action)).toEqual(["retrying", "using_fallback"]);
+  expect(JSON.stringify(events)).not.toContain("private provider response");
+  const attempts = await db.modelAttempt.findMany({ where: { runId: result.runId }, orderBy: { attempt: "asc" } });
+  expect(attempts.map(a => a.status)).toEqual(["succeeded", "failed", "failed", "succeeded"]);
+  expect(attempts.map(a => a.profile)).toEqual(["gemini-primary", "gemini-primary", "gemini-primary", "openai-fallback"]);
+  expect(result.usage.estimatedCostUsd).toBeNull();
+  const saved = await store.loadRun(result.runId, ownerId);
+  expect(saved.state.budgetSpentUsd).toBeCloseTo(attempts.reduce((sum, a) => sum + (a.estimatedCostUsd ?? a.reservedCostUsd), 0));
+  expect(await db.demoTicket.count({ where: { ownerId, idempotencyKey: { startsWith: `${result.runId}:` } } })).toBe(1);
+  expect(fallbackBody?.messages.some(m => m.role === "tool")).toBe(true);
+  const models = deriveTrace(events).items.filter(i => i.kind === "model");
+  expect(models[2]).toMatchObject({ recovery: "retrying", status: "failed" });
+  expect(models[3]).toMatchObject({ recovery: "using_fallback", model: "gpt-test", status: "done" });
+});
+
+it("stops before effects or further paid attempts when usage is unknown or the retained reservation exhausts the budget", async () => {
+  const unavailable = Object.assign(new Error("private provider response"), { status: 429 });
+  for (const unknown of [false, true]) {
+    const first = ticket(); if (unknown) first.inputTokens = null;
+    const primary = driver([unknown ? first : unavailable]);
+    const fallback = driver([answer()], "fallback"); primary.recovery = { maxRetries: 0, fallback };
+    const { config, deps, write } = await fixture(primary);
+    const bounded = { ...config, limits: { ...config.limits, maxEstimatedCostUsd: unknown ? 0.05 : 0.006 } };
+    const result = await runAgent({ config: bounded, ownerId, message: "Create a ticket" }, deps);
+    expect(result.status).toBe("blocked");
+    expect(result.stopReason).toBe(unknown ? "usage_unknown" : "budget_limit");
+    expect(write).not.toHaveBeenCalled(); expect(fallback.turn).not.toHaveBeenCalled();
+    const attempts = await db.modelAttempt.findMany({ where: { runId: result.runId } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].status).toBe(unknown ? "usage_unknown" : "failed");
+    expect((await store.loadRun(result.runId, ownerId)).state.budgetSpentUsd).toBeGreaterThan(0);
+  }
 });

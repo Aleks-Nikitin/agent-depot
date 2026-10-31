@@ -10,6 +10,7 @@ export const AgentInputSchema = z
     instructions: z.string().trim().min(1).max(8000),
     workspaceName: z.string().trim().min(1).max(80).optional(),
     modelProfile: ModelProfileIdSchema.optional(),
+    fallbackModelProfile: ModelProfileIdSchema.optional(),
     model: z.literal("gemini").default("gemini"),
     enabledTools: z.array(z.string().min(1).max(100)).max(10).default([]),
     requireWriteApproval: z.boolean().default(true),

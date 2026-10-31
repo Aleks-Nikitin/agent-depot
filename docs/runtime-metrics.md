@@ -2,6 +2,10 @@
 
 The runtime writes one terminal `RuntimeMetric` row atomically with the run status and event. PostgreSQL remains the default. Tiger Cloud can host the same Prisma PostgreSQL database; enabling TimescaleDB turns this table into a hypertable and adds an hourly continuous aggregate. The runtime does not call an extra analytics service while running an agent.
 
+## Model attempt accounting
+
+`ModelAttempt` stores one reservation and outcome per provider request, including retries and fallback. The run's model-call count includes every attempt. Failed requests retain conservative reservations; unknown billing stays null in terminal usage rather than becoming free. Terminal `modelProfile` identifies the last actual profile. Attempt metadata contains no prompts or tool payloads. See [runtime recovery](langchain-runtime.md).
+
 ## Ordinary PostgreSQL
 
 ```bash

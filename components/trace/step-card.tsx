@@ -33,7 +33,8 @@ export function ModelStepCard({ item, step, model, description, collapsed }: {
   return (
     <Shell>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <StepLabel tone="model" step={step} kind="Model" name={model} />
+        <StepLabel tone="model" step={step} kind="Model" name={item.model ?? model} />
+        {item.recovery && <span className="text-xs text-(--ad-model)">{item.recovery === "using_fallback" ? "Using fallback" : "Retrying"}</span>}
         <Meta>
           {item.status === "failed" ? "stopped · usage unknown" : item.status === "running" ? "running…"
             : `${formatTokens(item.tokens)} · ${formatCost(item.usage?.estimatedCostUsd)} · ${formatDuration(item.durationMs)}`}

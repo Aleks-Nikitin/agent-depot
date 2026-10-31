@@ -18,7 +18,7 @@ function legacyRuntimeServices() {
 }
 
 export function runtimeServices() {
-  return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: { key: "deferred", estimate: () => { throw new Error("profile_not_resolved"); }, turn: async () => { throw new Error("profile_not_resolved"); } } satisfies ModelDriver,
+  return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: { key: "deferred", estimate: (input: number, output: number) => createGoogleDriver().estimate(input, output), turn: async () => { throw new Error("profile_not_resolved"); } } satisfies ModelDriver,
     driverForConfig: createProfileDriver, checkpointer: graphCheckpointer,
     legacyDriver: () => legacyRuntimeServices().driver };
 }

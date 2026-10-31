@@ -75,6 +75,8 @@ export function runInput(checkpoint: unknown): string {
 
 /** configSnapshot.model is always "gemini"; the real model id is the first part of checkpoint.driverKey. */
 export function runModel(checkpoint: unknown, configSnapshot: unknown): string {
+  const active = record(checkpoint).activeModel;
+  if (typeof active === "string") return active;
   const driverKey = record(checkpoint).driverKey;
   if (typeof driverKey === "string" && driverKey.startsWith("gemini-")) return driverKey.split(":")[0];
   const model = record(configSnapshot).model;

@@ -9,6 +9,11 @@ export type PendingCall = z.infer<typeof PendingCallSchema>;
 export const CheckpointSchema = z.object({
   schemaVersion: z.literal(1),
   graphVersion: z.literal(1).optional(),
+  budgetSpentUsd: z.number().nonnegative().optional(),
+  activeModel: z.string().optional(),
+  activeProfile: z.string().optional(),
+  activeDriverKey: z.string().optional(),
+  modelSteps: z.number().int().nonnegative().optional(),
   toolResults: z.record(z.string(), z.unknown()).optional(),
   messages: z.array(z.custom<ModelMessage>()),
   pending: z.array(PendingCallSchema),

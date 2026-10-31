@@ -6,6 +6,13 @@ import { CheckpointSchema, type Checkpoint, type PendingCall } from "../runtime/
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
+export type AttemptReservation = {
+  attempt: number; modelStep: number; profile: string; provider: string; model: string; reservedCostUsd: number;
+};
+export type AttemptSettlement = {
+  status: "succeeded" | "failed" | "usage_unknown"; inputTokens: number | null; outputTokens: number | null;
+  estimatedCostUsd: number | null; reason: string | null; durationMs: number;
+};
 type Tx = Prisma.TransactionClient;
 async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventInput): Promise<RunStep> {
   const run = await tx.agentRun.update({ where: { id: runId, ownerId }, data: { sequence: { increment: 1 } } });
@@ -35,6 +42,26 @@ export class PrismaRunStore {
       data: { checkpoint: json(state), version: { increment: 1 } } });
     if (result.count !== 1) throw new Error("stale_checkpoint");
     return version + 1;
+  }
+  async reserveModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: AttemptReservation) {
+    return this.db.$transaction(async tx => {
+      const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
+        data: { checkpoint: json(state), version: { increment: 1 } } });
+      if (updated.count !== 1) throw new Error("stale_checkpoint");
+      await tx.modelAttempt.create({ data: { runId, ...attempt } });
+      return version + 1;
+    });
+  }
+  async settleModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: number, result: AttemptSettlement) {
+    return this.db.$transaction(async tx => {
+      const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
+        data: { checkpoint: json(state), version: { increment: 1 } } });
+      if (updated.count !== 1) throw new Error("stale_checkpoint");
+      const settled = await tx.modelAttempt.updateMany({ where: { runId, attempt, status: "reserved" },
+        data: { ...result, durationMs: Math.ceil(result.durationMs), finishedAt: new Date() } });
+      if (settled.count !== 1) throw new Error("attempt_unavailable");
+      return version + 1;
+    });
   }
   async pauseForApproval(runId: string, ownerId: string, version: number, state: Checkpoint, call: PendingCall) {
     return this.db.$transaction(async tx => {
@@ -84,7 +111,7 @@ export class PrismaRunStore {
       const config = AgentConfigSchema.parse(run.configSnapshot);
       await tx.runtimeMetric.create({ data: {
         runId, finishedAt, ownerId, agentId: config.id, agentVersion: config.version,
-        modelProfile: state.driverKey, status, stopReason, activeMs: Math.ceil(state.activeMs),
+        modelProfile: state.activeProfile ?? state.activeDriverKey ?? state.driverKey, status, stopReason, activeMs: Math.ceil(state.activeMs),
         modelCalls: state.modelCalls, toolCalls: state.toolCalls, ...state.usage,
       } });
       return insertEvent(tx, runId, ownerId, status === "completed"
@@ -100,4 +127,4 @@ export class PrismaRunStore {
   }
 }
 // Structural interface also permits isolated fake stores in unit tests.
-export type RunStore = Pick<PrismaRunStore, "createRun" | "loadRun" | "appendEvent" | "saveCheckpoint" | "pauseForApproval" | "claimApproval" | "finishRun">;
+export type RunStore = Pick<PrismaRunStore, "createRun" | "loadRun" | "appendEvent" | "saveCheckpoint" | "reserveModelAttempt" | "settleModelAttempt" | "pauseForApproval" | "claimApproval" | "finishRun">;
