@@ -1,3 +1,4 @@
+import { ReleasePanel } from "@/components/shell/release-panel";
 import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
@@ -12,8 +13,9 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const agent = await getAgent(ownerId, id).catch(() => null); if (!agent) notFound();
   const rows = await getDb().agentDraft.findMany({ where: { agentId: id, agent: { ownerId } }, orderBy: { version: "desc" } });
-  return <VersionsPanel agentId={id} currentVersion={agent.version} versions={rows.map(row => ({ version: row.version, name: row.name,
-    createdAt: row.createdAt.toISOString(), published: agent.publishedVersion === row.version, spec: toYaml(row.config) }))} />;
+  const releases = await getDb().agentRelease.findMany({ where: { agentId: id }, orderBy: { createdAt: "desc" } });
+  return <><ReleasePanel agentId={id} servingReleaseId={agent.servingReleaseId} generation={agent.servingGeneration} releases={releases.map(row => ({ id: row.id, version: row.version, createdAt: row.createdAt.toISOString() }))} /><VersionsPanel agentId={id} currentVersion={agent.version} versions={rows.map(row => ({ version: row.version, name: row.name,
+    createdAt: row.createdAt.toISOString(), published: agent.publishedVersion === row.version, spec: toYaml(row.config) }))} /></>;
 }
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
   return <Suspense fallback={<p className="p-6">Loading versions…</p>}><Content params={params} /></Suspense>;

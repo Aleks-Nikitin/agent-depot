@@ -5,6 +5,8 @@ import { getDb } from "@/lib/db/prisma";
 import { HttpError } from "@/lib/auth/errors";
 import { checkTestCase } from "./checks";
 import { gradeAnswer } from "./grader";
+import { artifactHash } from "@/lib/agents/releases/fingerprint";
+import { ProviderSettingsSchema, captureProviderSettings } from "@/lib/agents/releases/provider-settings";
 import { testFingerprint } from "./fingerprint";
 import { TestSourceSchema } from "./schema";
 import type { TestCase, TestResult, TestRunReport } from "./types";
@@ -28,7 +30,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     await tx.testRun.updateMany({ where: { agentId, status: "running" }, data: { status: "failed", passed: false } });
     const cases: TestCase[] = rows.map(row => ({ ...row, source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
-      passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), status: "running" } });
+      passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
     return { config, cases, record };
   });
   const results: TestResult[] = [];
@@ -45,7 +47,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
       const steps: RunStep[] = [];
       try {
         const result = await runAgent({ config: { ...config, limits: { ...config.limits, maxEstimatedCostUsd: budget,
-          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, message: testCase.input, approvalMode: "deny" },
+          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "deny" },
         { ...deps, signal: deadline, onEvent: event => { steps.push(event); } });
         const checked = checkTestCase(testCase, { steps, response: result.response });
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;

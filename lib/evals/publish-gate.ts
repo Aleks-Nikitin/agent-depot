@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getDb } from "@/lib/db/prisma";
 import type { TestRunReport } from "./types";
 import type { Prisma } from "../../generated/prisma/client";
+import { artifactHash } from "@/lib/agents/releases/fingerprint";
+import { captureProviderSettings } from "@/lib/agents/releases/provider-settings";
+import { AgentConfigSchema } from "@/lib/agents/contracts";
 import { testFingerprint } from "./fingerprint";
 
 const StoredResultSchema = z.object({
@@ -49,7 +52,7 @@ export async function getPublishStatus(ownerId: string, agentId: string, agentVe
   return readPublishStatus(getDb(), ownerId, agentId, agentVersion);
 }
 
-export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "testCase" | "testRun">,
+export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun">,
   ownerId: string, agentId: string, agentVersion?: number): Promise<PublishStatus> {
   const agent = await db.agent.findFirst({ where: { id: agentId, ownerId }, select: { version: true } });
   if (!agent) throw new Error("agent_not_found");
@@ -63,9 +66,18 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
   if (!run) return { canPublish: false, reason: "No test run for this version yet", ...counts };
   if (run.status !== "completed") return { canPublish: false, reason: "Latest test run is not complete", ...counts };
   if (!run.testsFingerprint || run.testsFingerprint !== testFingerprint(cases)) return { canPublish: false, reason: "Test cases changed. Run tests again", ...counts };
+  const draft = await db.agentDraft.findUnique({ where: { agentId_version: { agentId, version } } });
+  if (!draft || run.configHash !== artifactHash(AgentConfigSchema.parse(draft.config))) return { canPublish: false, reason: "Configuration evidence is missing or stale", ...counts };
+  if (!run.providerSettings || artifactHash(run.providerSettings) !== artifactHash(captureProviderSettings(AgentConfigSchema.parse(draft.config)))) return { canPublish: false, reason: "Provider settings changed. Run tests again", ...counts };
   if (!run.passed) {
     const failing = run.totalCount - run.passedCount;
     return { canPublish: false, reason: failing > 0 ? `${plural(failing, "test")} failing` : "Latest test run did not pass", ...counts };
+  }
+  const results = z.array(StoredResultSchema).safeParse(run.results);
+  if (!run.finishedAt || !results.success || run.totalCount !== testCount || run.passedCount !== testCount
+    || results.data.length !== testCount || new Set(results.data.map(result => result.testCaseId)).size !== testCount
+    || results.data.some(result => result.status !== "passed" || result.failures.length !== 0 || !cases.some(test => test.id === result.testCaseId))) {
+    return { canPublish: false, reason: "Evaluation evidence is incomplete", ...counts };
   }
   return { canPublish: true, reason: `All ${plural(run.totalCount, "test")} passed`, ...counts };
 }

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
 import { getDb } from "../db/prisma";
 import { supportAgent } from "../agents/fixtures";
+import { artifactHash } from "../agents/releases/fingerprint";
+import { captureProviderSettings } from "../agents/releases/provider-settings";
 import { testFingerprint } from "./fingerprint";
 import { getPublishStatus, latestTestRun } from "./publish-gate";
 
@@ -13,7 +15,12 @@ let minutes = 0;
 const at = () => new Date(Date.UTC(2026, 9, 25, 12, minutes++)); // strictly increasing createdAt
 
 async function run(agentVersion: number, passedCount: number, totalCount = 5) {
-  return db.testRun.create({ data: { agentId, agentVersion, results: [], testsFingerprint: testFingerprint(await db.testCase.findMany({ where: { agentId } })), passed: passedCount === totalCount, passedCount, totalCount, createdAt: at() } });
+  const config = { ...supportAgent, id: agentId, version: agentVersion };
+  const cases = await db.testCase.findMany({ where: { agentId }, orderBy: { id: "asc" } });
+  return db.testRun.create({ data: { agentId, agentVersion,
+    results: cases.map((test, i) => ({ testCaseId: test.id, status: i < passedCount ? "passed" : "failed", failures: [] })),
+    configHash: artifactHash(config), providerSettings: captureProviderSettings(config),
+    testsFingerprint: testFingerprint(cases), passed: passedCount === totalCount, passedCount, totalCount, finishedAt: at(), createdAt: at() } });
 }
 
 beforeEach(async () => {
@@ -21,7 +28,8 @@ beforeEach(async () => {
   await db.testCase.deleteMany({ where: { agentId } });
   await db.agent.deleteMany({ where: { id: agentId } });
   await db.agent.create({ data: { id: agentId, ownerId: "demo", name: "Publish gate IT", version: 2, config: { ...supportAgent, id: agentId, version: 2 } } });
-  await db.testCase.create({ data: { agentId, input: "Can I return a jacket?", mustCall: ["knowledge_search"] } });
+  for (const version of [1, 2]) await db.agentDraft.create({ data: { agentId, version, name: "Publish gate IT", config: { ...supportAgent, id: agentId, version } } });
+  for (let i = 0; i < 5; i++) await db.testCase.create({ data: { agentId, input: `Can I return jacket ${i}?`, mustCall: ["knowledge_search"] } });
 });
 afterAll(async () => {
   await db.testRun.deleteMany({ where: { agentId } }); // TestRun has no relation, so delete explicitly

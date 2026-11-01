@@ -90,7 +90,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
   try {
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
-    if (deps.driverForConfig && openingEvent !== "run_started") deps = { ...deps, driver: deps.driverForConfig(config) };
+    if (deps.driverForConfig && openingEvent !== "run_started") deps = { ...deps, driver: deps.driverForConfig(config, state.providerSettings) };
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
     if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     const checkpointer = await deps.checkpointer!();

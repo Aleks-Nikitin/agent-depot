@@ -25,5 +25,5 @@ export const RollbackRequestSchema = z
   .strict();
 
 export const PublishRequestSchema = z
-  .object({ testsPassed: z.boolean().optional() })
+  .object({ testsPassed: z.boolean().optional(), expectedVersion: z.number().int().positive().optional() })
   .strict();

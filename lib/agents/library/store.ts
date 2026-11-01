@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
 import { AgentConfigSchema, type AgentConfig } from "@/lib/agents/contracts";
 import { AgentInputSchema, type AgentInput } from "./schema";
-import { readPublishStatus } from "@/lib/evals/publish-gate";
+import { promoteRelease } from "../releases/promote";
 
 export type AgentSummary = {
   id: string;
@@ -29,6 +29,8 @@ export type AgentDetail = {
   version: number;
   published: boolean;
   publishedVersion: number | null;
+  servingReleaseId: string | null;
+  servingGeneration: number;
   config: AgentConfig;
   updatedAt: string;
   versions: AgentVersionSummary[];
@@ -97,8 +99,10 @@ export async function getAgent(ownerId: string, id: string): Promise<AgentDetail
     id: row.id,
     name: row.name,
     version: row.version,
-    published: row.published,
-    publishedVersion: row.publishedVersion,
+    published: row.servingReleaseId !== null,
+    publishedVersion: row.servingReleaseId ? row.publishedVersion : null,
+    servingReleaseId: row.servingReleaseId,
+    servingGeneration: row.servingGeneration,
     config,
     updatedAt: row.updatedAt.toISOString(),
     versions: row.versions.map((v) => ({
@@ -231,16 +235,10 @@ export async function publishAgent(
   ownerId: string,
   id: string,
   testsPassed?: boolean,
+  expectedVersion?: number,
 ): Promise<AgentDetail> {
   void testsPassed; // Legacy clients may send this; only stored server evidence is trusted.
-  const db = getDb();
-  await db.$transaction(async tx => {
-    const locked = await tx.agent.updateMany({ where: { id, ownerId }, data: { testRevision: { increment: 0 } } });
-    if (locked.count !== 1) throw new Error("agent_not_found");
-    const status = await readPublishStatus(tx, ownerId, id);
-    if (!status.canPublish) throw new Error("tests_not_passed");
-    await tx.agent.update({ where: { id }, data: { published: true, publishedVersion: status.agentVersion } });
-  });
+  await promoteRelease(ownerId, id, expectedVersion);
   return getAgent(ownerId, id);
 }
 

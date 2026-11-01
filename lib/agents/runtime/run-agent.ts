@@ -1,3 +1,5 @@
+import type { ProviderSettings } from "../releases/provider-settings";
+import type { RunBinding } from "../storage/prisma-store";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
 import { withoutPayloadTracing } from "./tracing";
 import { executeGraph } from "./graph-run";
@@ -9,29 +11,29 @@ import type { ModelDriver } from "./model";
 import type { Checkpoint } from "./state";
 
 export type RuntimeDependencies = {
-  driverForConfig?: (config: AgentConfig) => ModelDriver;
+  driverForConfig?: (config: AgentConfig, settings?: ProviderSettings) => ModelDriver;
   checkpointer?: () => Promise<BaseCheckpointSaver>;
   store: RunStore; registry: ToolRegistry; driver: ModelDriver;
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
 
 export async function runAgent(options: {
-  config: AgentConfig; ownerId: string; message: string; approvalMode?: "human" | "deny";
+  config: AgentConfig; ownerId: string; message: string; providerSettings?: ProviderSettings; binding?: RunBinding; approvalMode?: "human" | "deny";
 }, deps: RuntimeDependencies): Promise<AgentRunResult> {
   const config = AgentConfigSchema.parse(options.config);
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
-  if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config) };
+  if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config, options.providerSettings) };
   deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
   const state: Checkpoint = {
-    schemaVersion: 1, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
+    schemaVersion: 1, providerSettings: options.providerSettings, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
     messages: [{ role: "user", content: message }], pending: [], seenCallIds: [],
     writeCalls: 0, modelCalls: 0, toolCalls: 0,
     usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key,
   };
-  const run = await deps.store.createRun(config, state);
+  const run = await deps.store.createRun(config, state, options.binding);
   return withoutPayloadTracing(() => executeGraph(run.id, options.ownerId, deps, undefined, "run_started"));
 }
 

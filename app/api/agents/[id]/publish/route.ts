@@ -6,8 +6,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const ownerId = await currentOwner(request);
     const { id } = await context.params;
-    const { testsPassed } = PublishRequestSchema.parse(await readJson(request));
-    return Response.json(await publishAgent(ownerId, id, testsPassed));
+    const { testsPassed, expectedVersion } = PublishRequestSchema.parse(await readJson(request));
+    return Response.json(await publishAgent(ownerId, id, testsPassed, expectedVersion));
   } catch (error) {
     return configError(error);
   }

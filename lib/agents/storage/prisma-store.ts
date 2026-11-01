@@ -13,6 +13,7 @@ export type AttemptSettlement = {
   status: "succeeded" | "failed" | "usage_unknown"; inputTokens: number | null; outputTokens: number | null;
   estimatedCostUsd: number | null; reason: string | null; durationMs: number;
 };
+export type RunBinding = { releaseId?: string; executionKey: string; input: string; sessionId?: string };
 type Tx = Prisma.TransactionClient;
 async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventInput): Promise<RunStep> {
   const run = await tx.agentRun.update({ where: { id: runId, ownerId }, data: { sequence: { increment: 1 } } });
@@ -23,10 +24,11 @@ async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventI
 export class PrismaRunStore {
   constructor(readonly db: PrismaClient) {}
 
-  async createRun(config: AgentConfig, checkpoint: Checkpoint) {
+  async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding) {
     return this.db.agentRun.create({ data: {
       ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
-      agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : "playground",
+      agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : binding?.releaseId ? "serving" : "playground",
+      ...binding,
     } });
   }
   async loadRun(runId: string, ownerId: string) {

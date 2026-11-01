@@ -1,3 +1,4 @@
+import { ProviderSettingsSchema } from "../releases/provider-settings";
 import { z } from "zod";
 import type { ModelMessage } from "ai";
 import { UsageSchema } from "../contracts";
@@ -8,6 +9,7 @@ export const PendingCallSchema = z.object({
 export type PendingCall = z.infer<typeof PendingCallSchema>;
 export const CheckpointSchema = z.object({
   schemaVersion: z.literal(1),
+  providerSettings: ProviderSettingsSchema.optional(),
   graphVersion: z.literal(1).optional(),
   approvalInterruptId: z.string().optional(),
   budgetSpentUsd: z.number().nonnegative().optional(),

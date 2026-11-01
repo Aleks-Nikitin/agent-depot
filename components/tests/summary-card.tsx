@@ -154,7 +154,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
     setPublishing(true);
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/publish`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: version }),
       });
       if (!res.ok) throw new Error(String(res.status));
       setNotice(`Published v${version}.`);

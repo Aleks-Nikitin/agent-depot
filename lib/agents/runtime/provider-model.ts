@@ -1,3 +1,4 @@
+import { ProviderSettingsSchema, type ProviderSettings } from "../releases/provider-settings";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
@@ -26,8 +27,8 @@ class BoundedGoogleModel extends ChatGoogleGenerativeAI {
     return result;
   }
 }
-function nativeProfileDriver(config: AgentConfig, id: ModelProfileId): ModelDriver {
-  const profile = resolveProfile(id);
+function nativeProfileDriver(config: AgentConfig, id: ModelProfileId, settings?: ProviderSettings): ModelDriver {
+  const profile = resolveProfile(id, settings ? { ...process.env, ...settings } : process.env);
   const chatModel = profile.provider === "google"
     ? new BoundedGoogleModel({ model: profile.model, apiKey: profile.apiKey,
       maxOutputTokens: config.limits.maxOutputTokens, maxRetries: 0,
@@ -44,14 +45,16 @@ function nativeProfileDriver(config: AgentConfig, id: ModelProfileId): ModelDriv
     async turn() { throw new Error("native_model_requires_graph"); },
   };
 }
-export function createProfileDriver(config: AgentConfig): ModelDriver {
+export function createProfileDriver(config: AgentConfig, snapshot?: ProviderSettings): ModelDriver {
+  const settings = snapshot ? ProviderSettingsSchema.parse(snapshot) : undefined;
+  const env = settings ?? process.env;
   const id = modelProfileId(config);
-  const primary = nativeProfileDriver(config, id);
-  const selected = config.fallbackModelProfile ?? process.env.RUNTIME_FALLBACK_PROFILE;
+  const primary = nativeProfileDriver(config, id, settings);
+  const selected = config.fallbackModelProfile ?? env.RUNTIME_FALLBACK_PROFILE;
   const fallbackId = selected ? ModelProfileIdSchema.parse(selected) : undefined;
   if (fallbackId === id) throw new Error("invalid_fallback_profile");
-  const fallback = fallbackId ? nativeProfileDriver(config, fallbackId) : undefined;
-  const maxRetries = z.coerce.number().int().min(0).max(2).parse(process.env.RUNTIME_MODEL_MAX_RETRIES ?? "1");
+  const fallback = fallbackId ? nativeProfileDriver(config, fallbackId, settings) : undefined;
+  const maxRetries = z.coerce.number().int().min(0).max(2).parse(env.RUNTIME_MODEL_MAX_RETRIES ?? "1");
   primary.recovery = { maxRetries, fallback };
   primary.key += `:recovery-v1:${maxRetries}:${fallback?.key ?? "none"}`;
   return primary;
