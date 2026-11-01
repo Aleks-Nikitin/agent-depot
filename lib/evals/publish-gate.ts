@@ -68,7 +68,9 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
   if (!run.testsFingerprint || run.testsFingerprint !== testFingerprint(cases)) return { canPublish: false, reason: "Test cases changed. Run tests again", ...counts };
   const draft = await db.agentDraft.findUnique({ where: { agentId_version: { agentId, version } } });
   if (!draft || run.configHash !== artifactHash(AgentConfigSchema.parse(draft.config))) return { canPublish: false, reason: "Configuration evidence is missing or stale", ...counts };
-  if (!run.providerSettings || artifactHash(run.providerSettings) !== artifactHash(captureProviderSettings(AgentConfigSchema.parse(draft.config)))) return { canPublish: false, reason: "Provider settings changed. Run tests again", ...counts };
+  try {
+    if (!run.providerSettings || artifactHash(run.providerSettings) !== artifactHash(captureProviderSettings(AgentConfigSchema.parse(draft.config)))) return { canPublish: false, reason: "Provider settings changed. Run tests again", ...counts };
+  } catch { return { canPublish: false, reason: "Provider settings unavailable. Check configuration and run tests again", ...counts }; }
   if (!run.passed) {
     const failing = run.totalCount - run.passedCount;
     return { canPublish: false, reason: failing > 0 ? `${plural(failing, "test")} failing` : "Latest test run did not pass", ...counts };

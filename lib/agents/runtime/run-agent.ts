@@ -1,3 +1,4 @@
+import type { ModelMessage } from "ai";
 import type { ProviderSettings } from "../releases/provider-settings";
 import type { RunBinding } from "../storage/prisma-store";
 import type { BaseCheckpointSaver } from "@langchain/langgraph";
@@ -18,7 +19,7 @@ export type RuntimeDependencies = {
 };
 
 export async function runAgent(options: {
-  config: AgentConfig; ownerId: string; message: string; providerSettings?: ProviderSettings; binding?: RunBinding; approvalMode?: "human" | "deny";
+  config: AgentConfig; ownerId: string; message: string; history?: ModelMessage[]; providerSettings?: ProviderSettings; binding?: RunBinding; approvalMode?: "human" | "deny";
 }, deps: RuntimeDependencies): Promise<AgentRunResult> {
   const config = AgentConfigSchema.parse(options.config);
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
@@ -27,8 +28,8 @@ export async function runAgent(options: {
   if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config, options.providerSettings) };
   deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
   const state: Checkpoint = {
-    schemaVersion: 1, providerSettings: options.providerSettings, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
-    messages: [{ role: "user", content: message }], pending: [], seenCallIds: [],
+    schemaVersion: 1, sessionId: options.binding?.sessionId, providerSettings: options.providerSettings, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
+    messages: [...(options.history ?? []), { role: "user", content: message }], pending: [], seenCallIds: [],
     writeCalls: 0, modelCalls: 0, toolCalls: 0,
     usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key,

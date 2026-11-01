@@ -43,11 +43,12 @@ export type RunDetail = RunSummary & {
 };
 
 export type RunList = { runs: RunSummary[]; now: number; nextCursor: string | null };
-export type ListRunsOptions = { agentId?: string; status?: RunStatus; source?: "playground" | "test"; limit?: number; cursor?: string };
+export type ListRunsOptions = { agentId?: string; status?: RunStatus; source?: "playground" | "test" | "serving" | "interactive"; limit?: number; cursor?: string };
 
 type DbStatus = "running" | "waiting_approval" | "completed" | "blocked" | "failed";
 type EventRow = { eventId: string; runId: string; sequence: number; type: string; payload: unknown; timestamp: Date };
 export type RunRow = {
+  input?: string | null;
   id: string; agentId: string; agentVersion: number | null; status: DbStatus; configSnapshot: unknown; checkpoint: unknown;
   response: string | null; stopReason: string | null; createdAt: Date; finishedAt: Date | null;
 };
@@ -102,7 +103,7 @@ export function toRunDetail(row: RunRow, eventRows: EventRow[], agentName: strin
     agentName: agentName ?? (typeof config.name === "string" ? config.name : row.agentId),
     version: row.agentVersion ?? (typeof config.version === "number" ? config.version : null),
     model: runModel(row.checkpoint, row.configSnapshot),
-    input: runInput(row.checkpoint),
+    input: row.input ?? runInput(row.checkpoint),
     status: displayStatus(row.status, trace.status),
     durationMs: finished ? trace.totals.durationMs ?? wallClock : null,
     costUsd: trace.totals.costUsd, tokens: trace.totals.tokens,
@@ -122,7 +123,7 @@ export function toSummary(r: RunDetail): RunSummary {
 
 // ---- Reads ----
 
-const runSelect = { id: true, agentId: true, agentVersion: true, status: true, configSnapshot: true, checkpoint: true,
+const runSelect = { input: true, id: true, agentId: true, agentVersion: true, status: true, configSnapshot: true, checkpoint: true,
   response: true, stopReason: true, createdAt: true, finishedAt: true } as const;
 
 /** UI statuses that are not stored as-is: "rejected" is a completed run, "interrupted" never comes from the database. */
@@ -137,7 +138,7 @@ async function agentNames(ownerId: string, ids: string[]): Promise<Map<string, s
   return new Map(agents.map(a => [a.id, a.name]));
 }
 
-export async function listRuns(ownerId: string, { agentId, status, source = "playground", limit = 50, cursor }: ListRunsOptions = {}): Promise<RunList> {
+export async function listRuns(ownerId: string, { agentId, status, source = "interactive", limit = 50, cursor }: ListRunsOptions = {}): Promise<RunList> {
   if (RUNS_SOURCE === "fixtures") {
     const runs = fixtureRuns.map(toSummary).filter(r => (!agentId || r.agentId === agentId) && (!status || r.status === status));
     return { runs: runs.slice(0, limit), now: FIXTURE_NOW, nextCursor: null };
@@ -148,7 +149,7 @@ export async function listRuns(ownerId: string, { agentId, status, source = "pla
   const db = getDb();
   const dbStatus = status ? dbStatusFor(status) : null;
   const rows = await db.agentRun.findMany({
-    where: { ownerId, source, ...(agentId ? { agentId } : {}), ...(dbStatus ? { status: dbStatus } : {}) },
+    where: { ownerId, source: source === "interactive" ? { in: ["playground", "serving"] } : source, ...(agentId ? { agentId } : {}), ...(dbStatus ? { status: dbStatus } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

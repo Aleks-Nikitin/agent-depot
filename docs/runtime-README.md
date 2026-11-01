@@ -8,6 +8,10 @@ See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitor
 
 New service-created runs now execute through LangChain `createAgent` with PostgreSQL graph checkpoints, while preserving the existing event and service contracts. Run `npm run runtime:setup` after application migrations. See [adapter setup, profiles, tracing and verification limits](langchain-runtime.md). The older execution-loop/AI SDK descriptions below are historical: the bespoke orchestration loop has been removed. AI SDK drafting and grading remain in use. Old non-graph checkpoints remain readable but cannot resume effects.
 
+## Immutable releases and conversations
+
+Serving execution now resolves an approved immutable release, independently of editable drafts. Playground supports revision-pinned conversations and release rollback is available in Versions. See [release gates, APIs, session limits and verification boundaries](releases-and-conversations.md). The older descriptions below of publication as a version flag are superseded by this implementation.
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.

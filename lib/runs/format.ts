@@ -58,6 +58,17 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
 
 /** Stop reasons from the runtime, in plain words. Unknown codes fall back to the code itself. */
 const reasons: Record<string, string> = {
+  conversation_not_found: "This conversation is not available in your workspace",
+  conversation_expired: "This conversation has expired. Start a new conversation",
+  conversation_busy: "The previous turn is still running or waiting for approval. Review its saved run first",
+  conversation_busy_or_changed: "Another turn started first. Reload the conversation before sending again",
+  conversation_turn_limit: "This conversation reached ten turns. Start a new conversation",
+  conversation_context_limit: "This conversation is too long. Start a new conversation with the relevant details",
+  conversation_stopped: "The previous turn stopped. Review any completed actions before starting a new conversation",
+  conversation_artifact_mismatch: "This conversation could not verify its saved revision. Start a new conversation",
+  no_serving_release: "Publish a tested draft before starting a serving conversation",
+  idempotency_key_conflict: "This retry differs from the original message. Reload the saved run before continuing",
+  idempotency_key_required: "The request could not be identified safely. Reload and try again",
   runtime_unavailable: "The server could not start the agent. Ask the administrator to check Gemini configuration and the database; your request has not been confirmed",
   unauthorized: "Your session has ended. Sign in or continue as guest before running this agent",
   forbidden: "This action is not allowed in your workspace. Check that you are signed in to the right account",

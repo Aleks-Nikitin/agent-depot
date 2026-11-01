@@ -64,6 +64,7 @@ function summary(row: {
   version: number;
   published: boolean;
   publishedVersion: number | null;
+  servingReleaseId: string | null;
   config: unknown;
   updatedAt: Date;
 }): AgentSummary {
@@ -72,8 +73,8 @@ function summary(row: {
     id: row.id,
     name: row.name,
     version: row.version,
-    published: row.published,
-    publishedVersion: row.publishedVersion,
+    published: row.servingReleaseId !== null,
+    publishedVersion: row.servingReleaseId ? row.publishedVersion : null,
     enabledTools: config.enabledTools,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -110,7 +111,7 @@ export async function getAgent(ownerId: string, id: string): Promise<AgentDetail
       name: v.name,
       createdAt: v.createdAt.toISOString(),
       isCurrent: v.version === row.version,
-      isPublished: v.version === row.publishedVersion,
+      isPublished: row.servingReleaseId !== null && v.version === row.publishedVersion,
     })),
   };
 }

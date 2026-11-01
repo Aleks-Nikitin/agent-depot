@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RunStep } from "@/lib/agents/contracts";
 import { outcomeOf, RunClientError, RunHistorySchema, type RunClient } from "./client";
 import { readRunStream } from "./ndjson";
@@ -15,8 +16,8 @@ async function failure(res: Response): Promise<RunClientError> {
   return new RunClientError(typeof body?.error === "string" ? body.error : `http_${res.status}`, res.status);
 }
 
-async function stream(url: string, body: unknown, onEvent: (e: RunStep) => void, signal?: AbortSignal) {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
+async function stream(url: string, body: unknown, onEvent: (e: RunStep) => void, signal?: AbortSignal, requestKey?: string) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(requestKey ? { "Idempotency-Key": requestKey } : {}) }, body: JSON.stringify(body), signal });
   if (!res.ok || !res.body) throw await failure(res);
   const seen: RunStep[] = [];
   try {
@@ -37,6 +38,37 @@ export function createHttpRunClient(): RunClient {
       const res = await fetch(playgroundEndpoints.history(runId, afterSequence), { cache: "no-store" });
       if (!res.ok) throw await failure(res);
       return RunHistorySchema.parse(await res.json());
+    },
+  };
+}
+
+export const ConversationSchema = z.object({
+  id: z.string(), version: z.number().int(), target: z.enum(["draft", "release"]),
+});
+export type Conversation = z.infer<typeof ConversationSchema>;
+
+export function createConversationRunClient(options: {
+  initial?: Conversation; version: number; target: "draft" | "release"; onSession: (session: Conversation | null) => void;
+}) {
+  let session = options.initial;
+  let pending: { message: string; key: string } | undefined;
+  const base = createHttpRunClient();
+  return {
+    ...base,
+    resetSession() { session = undefined; pending = undefined; options.onSession(null); },
+    async startRun({ agentId, message }: { agentId: string; message: string }, onEvent: (event: RunStep) => void, signal?: AbortSignal) {
+      if (!session) {
+        const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/sessions`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, signal,
+          body: JSON.stringify({ target: options.target, ...(options.target === "draft" ? { version: options.version } : {}) }),
+        });
+        if (!response.ok) throw await failure(response);
+        session = ConversationSchema.parse(await response.json()); options.onSession(session);
+      }
+      if (!pending || pending.message !== message) pending = { message, key: crypto.randomUUID() };
+      const outcome = await stream(`/api/agents/${encodeURIComponent(agentId)}/sessions/${encodeURIComponent(session.id)}/messages`, { message }, onEvent, signal, pending.key);
+      if (outcome.status !== "interrupted") pending = undefined;
+      return outcome;
     },
   };
 }

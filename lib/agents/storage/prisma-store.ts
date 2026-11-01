@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { HttpError } from "@/lib/auth/errors";
+import { artifactHash } from "../releases/fingerprint";
+import { MAX_CONVERSATION_TURNS } from "../sessions/limits";
 import { approvalHash } from "../runtime/approval-hash";
 import type { PrismaClient, Prisma } from "../../../generated/prisma/client";
 import { AgentConfigSchema, RunStepSchema, type AgentConfig, type EventInput, type RunStep } from "../contracts";
@@ -13,7 +17,7 @@ export type AttemptSettlement = {
   status: "succeeded" | "failed" | "usage_unknown"; inputTokens: number | null; outputTokens: number | null;
   estimatedCostUsd: number | null; reason: string | null; durationMs: number;
 };
-export type RunBinding = { releaseId?: string; executionKey: string; input: string; sessionId?: string };
+export type RunBinding = { releaseId?: string; executionKey: string; input: string; sessionId?: string; expectedTurn?: number; artifactHash?: string };
 type Tx = Prisma.TransactionClient;
 async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventInput): Promise<RunStep> {
   const run = await tx.agentRun.update({ where: { id: runId, ownerId }, data: { sequence: { increment: 1 } } });
@@ -25,11 +29,26 @@ export class PrismaRunStore {
   constructor(readonly db: PrismaClient) {}
 
   async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding) {
-    return this.db.agentRun.create({ data: {
-      ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
-      agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : binding?.releaseId ? "serving" : "playground",
-      ...binding,
-    } });
+    return this.db.$transaction(async tx => {
+      const id = randomUUID();
+      let turn: number | undefined;
+      if (binding?.sessionId) {
+        if (!Number.isInteger(binding.expectedTurn) || !binding.artifactHash) throw new HttpError(409, "conversation_artifact_mismatch");
+        const claimed = await tx.conversationSession.updateMany({ where: { id: binding.sessionId, ownerId: config.ownerId,
+          agentId: config.id, turnCount: binding.expectedTurn, activeRunId: null, expiresAt: { gt: new Date() },
+          AND: { turnCount: { lt: MAX_CONVERSATION_TURNS } } }, data: { turnCount: { increment: 1 }, activeRunId: id } });
+        if (claimed.count !== 1) throw new HttpError(409, "conversation_busy_or_changed");
+        const session = await tx.conversationSession.findUniqueOrThrow({ where: { id: binding.sessionId } });
+        if (binding.artifactHash !== artifactHash({ config: session.config, providerSettings: session.providerSettings })
+          || binding.artifactHash !== artifactHash({ config, providerSettings: checkpoint.providerSettings })) throw new HttpError(409, "conversation_artifact_mismatch");
+        turn = session.turnCount;
+      }
+      return tx.agentRun.create({ data: {
+        id, ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
+        agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : binding?.releaseId ? "serving" : "playground",
+        releaseId: binding?.releaseId, executionKey: binding?.executionKey, input: binding?.input, sessionId: binding?.sessionId, turn,
+      } });
+    });
   }
   async loadRun(runId: string, ownerId: string) {
     const run = await this.db.agentRun.findFirst({ where: { id: runId, ownerId } });
@@ -110,6 +129,7 @@ export class PrismaRunStore {
         data: { status, response, stopReason, checkpoint: json(state), finishedAt, version: { increment: 1 } } });
       if (result.count !== 1) throw new Error("stale_checkpoint");
       const run = await tx.agentRun.findUniqueOrThrow({ where: { id: runId } });
+      if (run.sessionId) await tx.conversationSession.updateMany({ where: { id: run.sessionId, ownerId, activeRunId: runId }, data: { activeRunId: null } });
       const config = AgentConfigSchema.parse(run.configSnapshot);
       await tx.runtimeMetric.create({ data: {
         runId, finishedAt, ownerId, agentId: config.id, agentVersion: config.version,

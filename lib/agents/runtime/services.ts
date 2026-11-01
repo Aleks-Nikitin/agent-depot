@@ -17,7 +17,8 @@ function legacyRuntimeServices() {
   return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: createGoogleDriver() };
 }
 
-export function runtimeServices() {
+export function runtimeServices(options: { live?: boolean } = {}) {
+  void options; // Legacy callers may pass live; graph execution always resolves a real provider.
   return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: { key: "deferred", estimate: (input: number, output: number) => createGoogleDriver().estimate(input, output), turn: async () => { throw new Error("profile_not_resolved"); } } satisfies ModelDriver,
     driverForConfig: createProfileDriver, checkpointer: graphCheckpointer,
     legacyDriver: () => legacyRuntimeServices().driver };

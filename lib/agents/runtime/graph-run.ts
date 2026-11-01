@@ -94,7 +94,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
     if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
     const checkpointer = await deps.checkpointer!();
-    const graphConfig = { configurable: { thread_id: runId }, signal, recursionLimit: 4 * (config.limits.maxModelCalls + config.limits.maxToolCalls) + 10 };
+    const graphConfig = { configurable: { thread_id: state.sessionId ? `session:${state.sessionId}` : runId }, signal, recursionLimit: 4 * (config.limits.maxModelCalls + config.limits.maxToolCalls) + 10 };
     // Serialize framework tool callbacks to preserve application event/CAS ordering.
     let queue: Promise<unknown> = Promise.resolve();
     let stopped: unknown;
@@ -236,7 +236,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
     });
     const result = await withoutPayloadTracing(() => agent.invoke(decision ? new Command({ resume: state.approvalInterruptId
       ? { [state.approvalInterruptId]: { approved: decision.approved, callHash: decision.inputHash } }
-      : { approved: decision.approved, callHash: decision.inputHash } }) : { messages: [{ role: "user", content: String(state.messages[0].content) }] }, graphConfig));
+      : { approved: decision.approved, callHash: decision.inputHash } }) : { messages: [{ role: "user", content: String(state.messages[state.messages.length - 1].content) }] }, graphConfig));
     if (result.__interrupt__?.length) {
       const call = state.pending[0];
       guard(!!call, "approval_call_mismatch");

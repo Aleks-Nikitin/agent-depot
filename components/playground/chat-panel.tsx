@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Backlit } from "@/components/ui/backlit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { TracePanel } from "@/components/trace/trace-panel";
 import { TraceTotals } from "@/components/trace/trace-totals";
 import type { AgentHeaderData } from "@/lib/fixtures/runs";
 import type { Trace, TraceItem } from "@/lib/playground/reduce-events";
+import { createConversationRunClient, type Conversation } from "@/lib/playground/http-client";
 import { CLIENT_MODE, useRun } from "@/lib/playground/use-run";
 import { describeReason, formatClock, formatCost, formatDuration, runLabel } from "@/lib/runs/format";
 import { AgentBubble, NoticeBubble, TypingBubble, UserBubble } from "./chat-bubble";
@@ -65,9 +67,15 @@ function TurnReply({ trace, agentName, busy, error, interrupted, selected, onSel
  * Playground screen: owns the conversation and the live run, renders chat on the left and the trace on the right.
  * Each message starts a new run on the same agent; earlier turns keep their final trace so you can reopen it.
  */
-export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agent: AgentHeaderData; initialRunId?: string; initialMessage?: string }) {
-  const run = useRun();
-  const [history, setHistory] = useState<Turn[]>([]);
+export function PlaygroundScreen({ agent, initialRunId, initialMessage, initialSession, initialTurns = [], draftVersions = [agent.version], selectedVersion = agent.version, target = "draft" }: {
+  agent: AgentHeaderData; initialRunId?: string; initialMessage?: string; initialSession?: Conversation;
+  initialTurns?: Turn[]; draftVersions?: number[]; selectedVersion?: number; target?: "draft" | "release";
+}) {
+  const router = useRouter();
+  const [session, setSession] = useState<Conversation | null>(initialSession ?? null);
+  const client = useMemo(() => createConversationRunClient({ initial: initialSession, version: selectedVersion, target, onSession: setSession }), [initialSession, selectedVersion, target]);
+  const run = useRun(client);
+  const [history, setHistory] = useState<Turn[]>(initialTurns);
   const [current, setCurrent] = useState<string | null>(initialMessage ?? null);
   const [viewKey, setViewKey] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -78,8 +86,13 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
   const replay = run.replay;
   useEffect(() => { if (initialRunId) void replay(initialRunId); }, [initialRunId, replay]);
   useEffect(() => {
-    if (run.trace.runId) window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground?runId=${encodeURIComponent(run.trace.runId)}`);
-  }, [agent.id, run.trace.runId]);
+    if (session || run.trace.runId) {
+      const query = new URLSearchParams();
+      if (session) query.set("sessionId", session.id);
+      if (run.trace.runId) query.set("runId", run.trace.runId);
+      window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground?${query}`);
+    }
+  }, [agent.id, run.trace.runId, session]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" }); }, [history.length, current, run.trace.status]);
 
@@ -89,7 +102,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
     setViewKey(null);
     void run.start(agent.id, message);
   };
-  const newRun = () => { run.reset(); setHistory([]); setCurrent(null); setViewKey(null); window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground`); };
+  const newRun = () => { client.resetSession(); run.reset(); setHistory([]); setCurrent(null); setViewKey(null); window.history.replaceState(null, "", `/agents/${encodeURIComponent(agent.id)}/playground?${target === "release" ? "target=release" : `draftVersion=${selectedVersion}`}`); };
 
   return (
     <div className="grid flex-1 gap-5 p-4 sm:p-6 lg:h-[calc(100dvh-125px)] lg:min-h-155 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-[minmax(0,1fr)]">
@@ -97,13 +110,18 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-(--ad-border) px-5">
           <span className="h-2 w-2 rounded-full bg-(--ad-success)" aria-hidden="true" />
           <h2 className="text-[15px] font-semibold">Chat</h2>
-          <span className="ad-mono text-xs text-(--ad-muted)">· {agent.name}</span>
-          <Button size="sm" className="ad-mono ml-auto" onClick={newRun} disabled={run.busy}><RefreshIcon size={14} /> New run</Button>
+          {session ? <span className="ad-mono text-xs text-(--ad-muted)">{session.target === "release" ? "Serving" : "Draft"} v{session.version} · pinned</span> :
+            <select aria-label="Conversation revision" className="min-w-0 rounded border border-(--ad-border) bg-(--ad-surface) p-1 text-xs" value={target === "release" ? "release" : String(selectedVersion)} disabled={run.busy}
+              onChange={event => { router.push(`/agents/${encodeURIComponent(agent.id)}/playground?${event.target.value === "release" ? "target=release" : `draftVersion=${event.target.value}`}`); }}>
+              {draftVersions.map(version => <option key={version} value={version}>Draft v{version}</option>)}
+              {agent.publishedVersion != null && <option value="release">Serving v{agent.publishedVersion}</option>}
+            </select>}
+          <Button size="sm" className="ad-mono ml-auto" onClick={newRun} disabled={run.busy}><RefreshIcon size={14} /> New conversation</Button>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
           {agent.toolWarnings?.map(warning => <div key={warning} role="note" className="rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-200">{warning}. <Link href={`/agents/${agent.id}`} className="underline">Review tools</Link></div>)}
           {!history.length && !current && (
-            <p className="py-10 text-center text-sm text-(--ad-muted)">Ask {agent.name} something. Each message is one run, traced step by step.</p>
+            <p className="py-10 text-center text-sm text-(--ad-muted)">Ask {agent.name} something. Conversations stay on one revision for up to ten turns. Each turn has its own trace.</p>
           )}
           {history.map(t => (
             <div key={t.key} className="space-y-5">
@@ -122,7 +140,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage }: { agen
           <div ref={endRef} />
         </div>
         <div className="shrink-0 border-t border-(--ad-border) p-4">
-          <MessageComposer onSend={send} disabled={run.busy} />
+          <MessageComposer onSend={send} disabled={run.busy || run.trace.status === "waiting_approval"} />
         </div>
       </Card>
 
