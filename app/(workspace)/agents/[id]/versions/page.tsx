@@ -11,7 +11,7 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
   const ownerId = await pageOwnerOrNull(); if (!ownerId) return <AuthPrompt />;
   const { id } = await params;
   const agent = await getAgent(ownerId, id).catch(() => null); if (!agent) notFound();
-  const rows = await getDb().agentVersion.findMany({ where: { agentId: id, agent: { ownerId } }, orderBy: { version: "desc" } });
+  const rows = await getDb().agentDraft.findMany({ where: { agentId: id, agent: { ownerId } }, orderBy: { version: "desc" } });
   return <VersionsPanel agentId={id} currentVersion={agent.version} versions={rows.map(row => ({ version: row.version, name: row.name,
     createdAt: row.createdAt.toISOString(), published: agent.publishedVersion === row.version, spec: toYaml(row.config) }))} />;
 }

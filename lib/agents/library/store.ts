@@ -121,7 +121,7 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
     await tx.agent.create({
       data: { id, ownerId, name: input.name, version: 1, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: 1, name: input.name, config },
     });
     if (input.testCases?.length) await tx.testCase.createMany({ data: input.testCases.map(test => ({ ...test, agentId: id })) });
@@ -147,7 +147,7 @@ export async function updateAgent(
       where: { id },
       data: { name: input.name, version: nextVersion, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: nextVersion, name: input.name, config },
     });
   });
@@ -175,7 +175,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
   await db.$transaction(async (tx) => {
     await ensureWorkspace(tx, ownerId);
     await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: newId, version: 1, name, config },
     });
     const cases = await tx.testCase.findMany({ where: { agentId: id }, take: 5, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
@@ -197,7 +197,7 @@ export async function rollbackAgent(
     if (locked.count !== 1) throw new Error("agent_not_found");
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
-    const target = await tx.agentVersion.findUnique({
+    const target = await tx.agentDraft.findUnique({
       where: { agentId_version: { agentId: id, version: targetVersion } },
     });
     if (!target) throw new Error("version_not_found");
@@ -220,7 +220,7 @@ export async function rollbackAgent(
       where: { id },
       data: { name: target.name, version: nextVersion, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: nextVersion, name: target.name, config },
     });
   });

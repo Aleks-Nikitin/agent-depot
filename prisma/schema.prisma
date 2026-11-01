@@ -95,13 +95,18 @@ model Agent {
   testRevision     Int            @default(0)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
-  versions         AgentVersion[]
+  versions         AgentDraft[]
+  releases         AgentRelease[]
+  conversations    ConversationSession[]
+  servingReleaseId String?
+  servingGeneration Int @default(0)
+  servingRelease   AgentRelease? @relation("ServingRelease", fields: [servingReleaseId], references: [id], onDelete: SetNull)
   testCases        TestCase[]     // NEW
 
   @@index([ownerId])
 }
 
-model AgentVersion {
+model AgentDraft {
   id        String   @id @default(uuid())
   agentId   String
   version   Int
@@ -110,6 +115,7 @@ model AgentVersion {
   createdAt DateTime @default(now())
   agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  @@map("AgentVersion")
   @@unique([agentId, version])
   @@index([agentId])
 }
@@ -118,6 +124,11 @@ model AgentRun {
   id             String     @id @default(uuid())
   ownerId        String
   agentId        String
+  releaseId      String?
+  sessionId      String?
+  turn           Int?
+  executionKey   String? @unique
+  input          String?
   configSnapshot Json
   status         RunStatus  @default(running)
   sequence       Int        @default(0)
@@ -253,6 +264,8 @@ model TestRun {
   passed       Boolean
   passedCount  Int
   totalCount   Int
+  configHash   String?
+  providerSettings Json?
   testsFingerprint String?
   status       String   @default("completed")
   finishedAt   DateTime?
@@ -291,4 +304,39 @@ model ModelAttempt {
   run             AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([runId, attempt])
+}
+
+// Approval artifacts are append-only; updates are rejected by a database trigger.
+model AgentRelease {
+  id String @id @default(uuid())
+  agentId String
+  draftId String
+  version Int
+  config Json
+  configHash String
+  providerSettings Json
+  evidence Json
+  evidenceHash String
+  approvedBy String
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  servingAgents Agent[] @relation("ServingRelease")
+  @@index([agentId, createdAt])
+}
+
+model ConversationSession {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  draftId String
+  releaseId String?
+  version Int
+  config Json
+  providerSettings Json
+  turnCount Int @default(0)
+  activeRunId String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, agentId])
 }

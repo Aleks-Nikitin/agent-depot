@@ -28,7 +28,7 @@ async function main() {
     const summary = await db.$transaction(async tx => {
       // Versions: same config as now, with config.version matching each version (the runtime checks this).
       for (const version of [1, current]) {
-        await tx.agentVersion.upsert({ where: { agentId_version: { agentId: AGENT_ID, version } }, update: {},
+        await tx.agentDraft.upsert({ where: { agentId_version: { agentId: AGENT_ID, version } }, update: {},
           create: { agentId: AGENT_ID, version, name: agent.name, config: json({ ...config, version }) } });
       }
       if (agent.version < current) {
