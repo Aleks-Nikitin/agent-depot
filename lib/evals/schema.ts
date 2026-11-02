@@ -1,9 +1,7 @@
 import { z } from "zod";
 
-// Browser-safe tool ids for test cases. The runtime registry (lib/integrations/demo-tools.ts) imports the
-// database client, so it cannot be loaded in the form; schema.test.ts fails if the registry gains a tool
-// that is missing here.
-export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage"] as const;
+// Browser-safe tool IDs for test forms; schema.test.ts keeps this list aligned with the trusted runtime.
+export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "order_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage"] as const;
 /** Planned integrations (Dev 4): allowed in tests before they are registered. */
 export const PLANNED_TOOL_IDS = [] as const;
 export const TOOL_IDS = [...REGISTERED_TOOL_IDS, ...PLANNED_TOOL_IDS] as const;
