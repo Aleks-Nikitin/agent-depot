@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
-import { getDb } from "../db/prisma";
 import { createRegistry, type ToolDefinition } from "../agents/tools/registry";
 
 const querySchema = z.object({ query: z.string().trim().min(1).max(500) }).strict();
@@ -32,22 +30,13 @@ export const demoTools: ToolDefinition[] = [
   },
   {
     id: "create_ticket", description: "Create a bounded support ticket in the workspace database; available immediately without a human approval step. Find created tickets in Tools & knowledge.",
-    kind: "write", inputSchema: ticketSchema, automaticWrites: true, approvalExempt: true,
+    kind: "write", domainScoped: true, inputSchema: ticketSchema, automaticWrites: true, approvalExempt: true,
     outputSchema: z.object({ id: z.string().min(1), subject: z.string().max(200) }).strict(),
     async run(input, context) {
       context.signal.throwIfAborted();
       const { subject } = ticketSchema.parse(input);
-      const db = getDb();
-      // An empty Prisma upsert update can become a read-then-insert operation.
-      // PostgreSQL owns the conflict arbitration even for simultaneous calls.
-      await db.$executeRaw`
-        INSERT INTO "DemoTicket" ("id", "ownerId", "idempotencyKey", "subject", "createdAt")
-        VALUES (${randomUUID()}, ${context.ownerId}, ${context.idempotencyKey}, ${subject}, ${new Date()})
-        ON CONFLICT ("idempotencyKey") DO NOTHING
-      `;
-      const ticket = await db.demoTicket.findUniqueOrThrow({ where: { idempotencyKey: context.idempotencyKey } });
-      if (ticket.ownerId !== context.ownerId || ticket.subject !== subject) throw new Error("idempotency_conflict");
-      return { id: ticket.id, subject: ticket.subject };
+      if (!context.domain) throw new Error("domain_scope_required");
+      return context.domain.createTicket(context.idempotencyKey, subject);
     },
   },
 ];

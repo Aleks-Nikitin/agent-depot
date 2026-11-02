@@ -1,15 +1,18 @@
+import type { DomainRepository } from "../domain/repository";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
 import type { AgentConfig } from "../contracts";
 
 export type ToolContext = {
   ownerId: string; runId: string; toolCallId: string; signal: AbortSignal;
+  domain?: DomainRepository;
   idempotencyKey: string;
 };
 export type ToolDefinition = {
   id: string; description: string; kind: "read" | "write";
   inputSchema: z.ZodType;
   outputSchema?: z.ZodType;
+  domainScoped?: boolean;
   automaticWrites?: boolean;
   approvalExempt?: boolean;
   unavailable?: () => string | null;
@@ -46,13 +49,16 @@ export async function dispatchTool(options: {
 }) {
   const { config, registry, toolId, input, context } = options;
   context.signal.throwIfAborted();
+  if (context.ownerId !== config.ownerId || (context.domain && context.domain.scope.ownerId !== context.ownerId)) throw new Error("domain_owner_mismatch");
   const tool = permittedTool(config, registry, toolId);
+  if (tool.domainScoped && !context.domain) throw new Error("domain_scope_required");
   const parsed = tool.inputSchema.parse(input);
   if (tool.kind === "write" && !options.writeApproved) throw new Error("approval_required");
   if (tool.kind === "write" && !isDeepStrictEqual(parsed, input)) throw new Error("approval_input_changed");
   const rawResult = await tool.run(parsed, context);
   const result = tool.outputSchema ? tool.outputSchema.parse(rawResult) : rawResult;
   context.signal.throwIfAborted();
+  if (context.ownerId !== config.ownerId || (context.domain && context.domain.scope.ownerId !== context.ownerId)) throw new Error("domain_owner_mismatch");
   const json = JSON.stringify(result);
   if (json === undefined || Buffer.byteLength(json) > 32_768) throw new Error("invalid_tool_output");
   // Normalize to actual JSON; no functions, BigInts, or undefined fields escape.

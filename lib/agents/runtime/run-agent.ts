@@ -1,3 +1,5 @@
+import type { DomainRepository } from "../domain/repository";
+import { liveDomainRepository } from "../domain/prisma-repository";
 import type { ModelMessage } from "ai";
 import type { ProviderSettings } from "../releases/provider-settings";
 import type { RunBinding } from "../storage/prisma-store";
@@ -12,6 +14,7 @@ import type { ModelDriver } from "./model";
 import type { Checkpoint } from "./state";
 
 export type RuntimeDependencies = {
+  domain?: DomainRepository;
   driverForConfig?: (config: AgentConfig, settings?: ProviderSettings) => ModelDriver;
   checkpointer?: () => Promise<BaseCheckpointSaver>;
   store: RunStore; registry: ToolRegistry; driver: ModelDriver;
@@ -25,6 +28,8 @@ export async function runAgent(options: {
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
+  if (deps.domain && deps.domain.scope.ownerId !== options.ownerId) throw new Error("domain_owner_mismatch");
+  deps = { ...deps, domain: deps.domain ?? liveDomainRepository(options.ownerId) };
   if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config, options.providerSettings) };
   deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
   const state: Checkpoint = {

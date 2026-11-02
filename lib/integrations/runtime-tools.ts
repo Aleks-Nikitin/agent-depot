@@ -1,14 +1,14 @@
 import { z } from "zod";
-import { getDb } from "@/lib/db/prisma";
 import { createRegistry, type ToolDefinition } from "@/lib/agents/tools/registry";
 import { demoTools } from "./demo-tools";
 import { integrationTools } from "./index";
-import { knowledgeDocs } from "./data/knowledge";
+import { lookupSales } from "./salesLookup";
 import { searchKnowledge } from "./knowledgeSearch";
 
 export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).map(tool => ({
   id: tool.id, description: tool.description,
   kind: tool.kind,
+  domainScoped: ["knowledge_search", "sales_lookup"].includes(tool.id),
   retired: tool.id === "send_email",
   unavailable: ["google_shopping", "google_news", "read_webpage"].includes(tool.id) ? () => process.env.SERPAPI_API_KEY ? null : "search_not_configured" : undefined,
   // Keep the retired ID readable for old saved agents, but never advertise or execute it.
@@ -16,8 +16,13 @@ export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).ma
   async run(input, context) {
     context.signal.throwIfAborted();
     if (tool.id === "knowledge_search") {
-      const own = await getDb().knowledgeDocument.findMany({ where: { ownerId: context.ownerId }, orderBy: { createdAt: "desc" }, take: 100 });
-      return { ...searchKnowledge(input, own.length ? own : knowledgeDocs), dataKind: own.length ? "workspace_documents" : "illustrative_sample", sample: !own.length };
+      if (!context.domain) throw new Error("domain_scope_required");
+      const { documents, sample } = await context.domain.knowledge();
+      return { ...searchKnowledge(input, documents), dataKind: sample ? "illustrative_sample" : "workspace_documents", sample };
+    }
+    if (tool.id === "sales_lookup") {
+      if (!context.domain) throw new Error("domain_scope_required");
+      return lookupSales(input, await context.domain.products());
     }
     if (tool.id === "send_email") {
       throw new Error("email_removed");
@@ -29,4 +34,13 @@ export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).ma
 }));
 // Keep saved configurations using the original local ticket integration compatible.
 runtimeTools.push(...demoTools.filter(tool => tool.id === "create_ticket"));
+runtimeTools.push({
+  id: "order_lookup", description: "Look up an order in the current workspace. Missing orders return no record; no external shop is connected.",
+  kind: "read", domainScoped: true, inputSchema: z.object({ orderId: z.string().trim().min(1).max(100) }).strict(),
+  async run(input, context) {
+    if (!context.domain) throw new Error("domain_scope_required");
+    const { orderId } = z.object({ orderId: z.string() }).parse(input);
+    return { order: await context.domain.order(orderId) };
+  },
+});
 export const runtimeRegistry = createRegistry(runtimeTools);

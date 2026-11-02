@@ -340,3 +340,15 @@ model ConversationSession {
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   @@index([ownerId, agentId])
 }
+
+// Owned domain orders; no external shop integration is implied.
+model WorkspaceOrder {
+  id String @id @default(uuid())
+  ownerId String
+  orderId String
+  status String
+  totalCents Int
+  currency String @default("USD")
+  createdAt DateTime @default(now())
+  @@unique([ownerId, orderId])
+}

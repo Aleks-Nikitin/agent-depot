@@ -1,3 +1,4 @@
+import { liveDomainRepository } from "../domain/prisma-repository";
 import { approvalHash } from "./approval-hash";
 import { modelWithRecovery } from "./model-recovery";
 import { PolicyBlock, ExecutionFailure, guard } from "./errors";
@@ -36,6 +37,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
   const loaded = await deps.store.loadRun(runId, ownerId);
   if (loaded.status !== "running") throw new Error("run_unavailable");
   const { config, state } = loaded;
+  deps = { ...deps, domain: deps.domain ?? liveDomainRepository(ownerId) };
   let version = loaded.version;
   const invocationStarted = Date.now();
   const previousActive = state.activeMs;
@@ -151,6 +153,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
         guard(!!current, "approval_call_mismatch");
         const selected = permittedTool(config, deps.registry, current.toolId);
         const denied = selected.kind === "write" && state.approvalMode === "deny";
+        if (selected.retired && !denied) throw new ExecutionFailure("email_removed");
         const matchingDecision = decision?.call.toolCallId === id ? decision : undefined;
         if (!denied) {
           const input = selected.inputSchema.safeParse(current.input);
@@ -216,7 +219,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       let output: unknown;
       try {
         output = await withCancellation(signal, () => dispatchTool({ config, registry: deps.registry, toolId: call.toolId, input: call.input, writeApproved,
-          context: { ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
+          context: { domain: deps.domain, ownerId, runId, toolCallId: call.toolCallId, idempotencyKey: `${runId}:${call.toolCallId}`, signal } }));
       } catch (error) {
         const reason = toolFailureReason(error);
         await emit({ type: "tool_failed", payload: { toolId: call.toolId, toolCallId: call.toolCallId, reason } });

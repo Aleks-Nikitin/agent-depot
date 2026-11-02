@@ -96,9 +96,11 @@ export const salesLookup: Tool = {
   description: "Explore the prepared sample product sales dataset; these figures are illustrative, not actual store revenue.",
   input,
   kind: "read",
-  async run(args) {
+  async run(args) { return lookupSales(args, getProducts()); },
+};
+
+export function lookupSales(args: unknown, catalog: Product[]) {
     const { query, category } = readQuery(args);
-    const catalog = getProducts();
     const fallback = topN(catalog, 5);
     const n = limitFromQuery(query);
     const categoryName = namedCategory(catalog, query, category);
@@ -126,5 +128,4 @@ export const salesLookup: Tool = {
       category: categoryName,
       rows: rows.length > 0 ? rows : fallback.map(toRow),
     };
-  },
-};
+}
