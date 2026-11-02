@@ -28,7 +28,9 @@
     "metrics:test:up": "docker compose -f compose.timescale-test.yaml up -d --wait",
     "metrics:test:down": "docker compose -f compose.timescale-test.yaml down",
     "test:timescale": "tsx scripts/test-timescale.ts",
-    "runtime:setup": "tsx scripts/setup-graph-checkpoints.ts"
+    "runtime:setup": "tsx scripts/setup-graph-checkpoints.ts",
+    "eval:setup": "tsx scripts/setup-evaluation-db.ts",
+    "eval:cleanup": "tsx scripts/cleanup-evaluation-db.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.105",

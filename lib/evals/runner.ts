@@ -1,3 +1,5 @@
+import { createIsolatedAttempt } from "./isolation/attempt";
+import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
 import { AgentConfigSchema, type RunStep } from "@/lib/agents/contracts";
 import { runAgent, type RuntimeDependencies } from "@/lib/agents/runtime/run-agent";
 import { runtimeServices } from "@/lib/agents/runtime/services";
@@ -11,13 +13,13 @@ import { testFingerprint } from "./fingerprint";
 import { TestSourceSchema } from "./schema";
 import type { TestCase, TestResult, TestRunReport } from "./types";
 
-/** Same runtime, writes denied. Suite budgets are estimates, not an invoice guarantee. */
+/** Same runtime, domain effects isolated per case. Suite budgets are estimates, not an invoice guarantee. */
 export async function runEvaluation(ownerId: string, agentId: string, signal?: AbortSignal,
   dependencies?: RuntimeDependencies, grader = gradeAnswer): Promise<TestRunReport> {
   const db = getDb();
   const deps = dependencies ?? runtimeServices();
   const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]);
-  const { config, cases, record } = await db.$transaction(async tx => {
+  const { config, cases, record, knowledge } = await db.$transaction(async tx => {
     const locked = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 0 } } });
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -31,7 +33,10 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     const cases: TestCase[] = rows.map(row => ({ ...row, source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
       passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
-    return { config, cases, record };
+    const documents = await tx.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100,
+      select: { id: true, title: true, text: true } });
+    const knowledge = { documents: documents.length ? documents : structuredClone(knowledgeDocs), sample: documents.length === 0 };
+    return { config, cases, record, knowledge };
   });
   const results: TestResult[] = [];
   const started = Date.now();
@@ -45,11 +50,19 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         continue;
       }
       const steps: RunStep[] = [];
+      let attempt: Awaited<ReturnType<typeof createIsolatedAttempt>> | undefined;
+      let checked: TestResult;
       try {
+        attempt = await createIsolatedAttempt({ ownerId, suiteId: record.id, caseId: testCase.id, fixtures: { knowledge } });
+        // Only tools backed by the scoped repository can access fixture state.
+        // External retrieval cannot consult live services during an isolated case.
+        const registry = new Map([...deps.registry].map(([id, tool]) => [id, tool.domainScoped || tool.retired ? tool
+          : { ...tool, unavailable: () => "evaluation_external_tool_disabled" }]));
         const result = await runAgent({ config: { ...config, limits: { ...config.limits, maxEstimatedCostUsd: budget,
-          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "deny" },
-        { ...deps, signal: deadline, onEvent: event => { steps.push(event); } });
-        const checked = checkTestCase(testCase, { steps, response: result.response });
+          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "human" },
+        { ...deps, domain: attempt.repository, registry, signal: deadline, onEvent: event => { steps.push(event); } });
+        checked = checkTestCase(testCase, { steps, response: result.response });
+        if (result.status !== "completed") { checked.status = "error"; checked.failures.push("evaluation run did not complete"); }
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;
         if (testCase.useGrader && result.status === "completed") {
           const gradingInput = { instructions: config.instructions, question: testCase.input, answer: result.response ?? "",
@@ -65,12 +78,18 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
             checked.costUsd = checked.costUsd !== null && grade.estimatedCostUsd != null ? checked.costUsd + grade.estimatedCostUsd : null;
           }
         }
-        results.push(checked);
       } catch {
         reservedOrSpent += budget + graderReservation;
-        results.push({ testCaseId: testCase.id, status: "error", failures: ["evaluation execution unavailable"], response: null,
-          runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null });
+        checked = { testCaseId: testCase.id, status: "error", failures: ["evaluation execution unavailable"], response: null,
+          runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null };
+      } finally {
+        try { await attempt?.dispose(); }
+        catch {
+          checked = { testCaseId: testCase.id, status: "error", failures: ["evaluation fixture cleanup unavailable"], response: null,
+            runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null };
+        }
       }
+      results.push(checked!);
     }
     const passedCount = results.filter(result => result.status === "passed").length;
     const saved = await db.testRun.updateMany({ where: { id: record.id, status: "running" }, data: { results: JSON.parse(JSON.stringify(results)),

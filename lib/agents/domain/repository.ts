@@ -2,7 +2,7 @@ import type { KnowledgeDoc, Product } from "@/lib/integrations/types";
 
 export type Order = { id: string; orderId: string; status: string; totalCents: number; currency: string };
 export type Ticket = { id: string; subject: string };
-export type DomainScope = { kind: "live"; ownerId: string } | { kind: "evaluation"; ownerId: string; attemptId: string };
+export type DomainScope = { kind: "live"; ownerId: string } | { kind: "evaluation"; ownerId: string; attemptId: string; knowledgeHash: string };
 
 /** No raw database client, SQL executor, credentials or model-selected owner. */
 export interface DomainRepository {

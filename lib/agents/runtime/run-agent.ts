@@ -1,4 +1,4 @@
-import type { DomainRepository } from "../domain/repository";
+import { isIsolatedRepository, type DomainRepository } from "../domain/repository";
 import { liveDomainRepository } from "../domain/prisma-repository";
 import type { ModelMessage } from "ai";
 import type { ProviderSettings } from "../releases/provider-settings";
@@ -28,12 +28,13 @@ export async function runAgent(options: {
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
   const { message } = RunRequestSchema.parse({ message: options.message });
   enabledTools(config, deps.registry);
+  if (deps.domain?.scope.kind === "evaluation" && !isIsolatedRepository(deps.domain)) throw new Error("evaluation_scope_unavailable");
   if (deps.domain && deps.domain.scope.ownerId !== options.ownerId) throw new Error("domain_owner_mismatch");
   deps = { ...deps, domain: deps.domain ?? liveDomainRepository(options.ownerId) };
   if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config, options.providerSettings) };
   deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
   const state: Checkpoint = {
-    schemaVersion: 1, sessionId: options.binding?.sessionId, providerSettings: options.providerSettings, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
+    schemaVersion: 1, domainScope: deps.domain!.scope, sessionId: options.binding?.sessionId, providerSettings: options.providerSettings, graphVersion: 1, toolResults: {}, budgetSpentUsd: 0, modelSteps: 0,
     messages: [...(options.history ?? []), { role: "user", content: message }], pending: [], seenCallIds: [],
     writeCalls: 0, modelCalls: 0, toolCalls: 0,
     usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 },

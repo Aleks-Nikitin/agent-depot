@@ -7,9 +7,9 @@ import type { DomainRepository } from "./repository";
 
 export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb()): DomainRepository {
   return Object.freeze({
-    scope: { kind: "live" as const, ownerId },
+    scope: Object.freeze({ kind: "live" as const, ownerId }),
     async knowledge() {
-      const documents = await db.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100 });
+      const documents = await db.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100, select: { id: true, title: true, text: true } });
       return { documents: documents.length ? documents : structuredClone(knowledgeDocs), sample: documents.length === 0 };
     },
     async products() { return structuredClone(products); },

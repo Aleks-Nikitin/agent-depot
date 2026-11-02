@@ -1,3 +1,4 @@
+import { isIsolatedRepository } from "../domain/repository";
 import { liveDomainRepository } from "../domain/prisma-repository";
 import { approvalHash } from "./approval-hash";
 import { modelWithRecovery } from "./model-recovery";
@@ -92,6 +93,12 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
   try {
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
+    guard(deps.domain?.scope.ownerId === ownerId, "domain_owner_mismatch");
+    if (state.domainScope?.kind === "evaluation") {
+      guard(isIsolatedRepository(deps.domain) && deps.domain?.scope.kind === "evaluation"
+        && deps.domain.scope.attemptId === state.domainScope.attemptId
+        && deps.domain.scope.knowledgeHash === state.domainScope.knowledgeHash, "evaluation_scope_unavailable");
+    } else guard(deps.domain?.scope.kind === "live", "domain_scope_mismatch");
     if (deps.driverForConfig && openingEvent !== "run_started") deps = { ...deps, driver: deps.driverForConfig(config, state.providerSettings) };
     guard(state.driverKey === deps.driver.key, "model_policy_changed");
     if (decision) guard(isDeepStrictEqual(state.pending[0], decision.call), "approval_call_mismatch");
@@ -152,7 +159,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
         const current = state.pending.find(call => call.toolCallId === id);
         guard(!!current, "approval_call_mismatch");
         const selected = permittedTool(config, deps.registry, current.toolId);
-        const denied = selected.kind === "write" && state.approvalMode === "deny";
+        const denied = selected.kind === "write" && (state.approvalMode === "deny" || (state.domainScope?.kind === "evaluation" && !selected.domainScoped));
         if (selected.retired && !denied) throw new ExecutionFailure("email_removed");
         const matchingDecision = decision?.call.toolCallId === id ? decision : undefined;
         if (!denied) {
@@ -188,7 +195,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       // registry classification changed while the run was paused.
       const callDecision = decision?.call.toolCallId === call.toolCallId ? decision : undefined;
       if (callDecision) decision = undefined;
-      if (callDecision?.approved === false || (selected.kind === "write" && state.approvalMode === "deny")) {
+      if (callDecision?.approved === false || (selected.kind === "write" && (state.approvalMode === "deny" || (state.domainScope?.kind === "evaluation" && !selected.domainScoped)))) {
         state.toolCalls++;
         await emit({ type: "tool_failed", payload: { toolCallId: call.toolCallId, toolId: call.toolId, reason: "write_denied" } });
         addResult(state, call, { denied: true, reason: "write_denied" });

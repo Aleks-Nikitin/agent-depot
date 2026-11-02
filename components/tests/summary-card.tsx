@@ -142,7 +142,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
       } else report = await simulateTestRun(version, cases, () => {});
       setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
       setMeta(report); setClock(Date.now());
-      if (persist) { setNotice("Test results saved for this agent version. Write tools were automatically denied."); router.refresh(); }
+      if (persist) { setNotice("Test results saved for this agent version. Domain actions use disposable test data."); router.refresh(); }
     } catch (error) { setActionError(error instanceof Error ? error.message.replaceAll("_", " ") : "Could not run tests."); }
     finally { setRunning(null); setBusy(false); }
   };

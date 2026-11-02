@@ -16,6 +16,7 @@ export function modelFailureReason(error: unknown): string {
   return "model_response_invalid";
 }
 export const toolFailureCodes = new Set([
+  "evaluation_scope_unavailable", "evaluation_external_tool_disabled", "domain_owner_mismatch", "domain_scope_required",
   "ticket_not_found", "idempotency_conflict", "search_not_configured", "search_rate_limited", "search_access_denied", "search_unavailable", "search_response_invalid",
   "webpage_unavailable", "email_removed",
 ]);

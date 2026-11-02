@@ -58,6 +58,11 @@ export function formatRelative(iso: string, now: number = Date.now()): string {
 
 /** Stop reasons from the runtime, in plain words. Unknown codes fall back to the code itself. */
 const reasons: Record<string, string> = {
+  evaluation_scope_unavailable: "This test environment is closed or unavailable. Run the test suite again",
+  evaluation_external_tool_disabled: "This tool needs an external service and cannot run in the isolated test environment",
+  domain_owner_mismatch: "This action does not belong to the current workspace",
+  domain_scope_mismatch: "The saved run does not match this data environment. Start a fresh run",
+  domain_scope_required: "The action could not verify its workspace data connection",
   conversation_not_found: "This conversation is not available in your workspace",
   conversation_expired: "This conversation has expired. Start a new conversation",
   conversation_busy: "The previous turn is still running or waiting for approval. Review its saved run first",

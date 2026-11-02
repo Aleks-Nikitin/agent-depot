@@ -1,4 +1,4 @@
-import type { DomainRepository } from "../domain/repository";
+import { isIsolatedRepository, type DomainRepository } from "../domain/repository";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
 import type { AgentConfig } from "../contracts";
@@ -50,6 +50,7 @@ export async function dispatchTool(options: {
   const { config, registry, toolId, input, context } = options;
   context.signal.throwIfAborted();
   if (context.ownerId !== config.ownerId || (context.domain && context.domain.scope.ownerId !== context.ownerId)) throw new Error("domain_owner_mismatch");
+  if (context.domain?.scope.kind === "evaluation" && !isIsolatedRepository(context.domain)) throw new Error("evaluation_scope_unavailable");
   const tool = permittedTool(config, registry, toolId);
   if (tool.domainScoped && !context.domain) throw new Error("domain_scope_required");
   const parsed = tool.inputSchema.parse(input);

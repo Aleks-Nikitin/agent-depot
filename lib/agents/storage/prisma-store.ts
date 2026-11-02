@@ -45,7 +45,7 @@ export class PrismaRunStore {
       }
       return tx.agentRun.create({ data: {
         id, ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
-        agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : binding?.releaseId ? "serving" : "playground",
+        agentVersion: config.version, source: checkpoint.approvalMode === "deny" || checkpoint.domainScope?.kind === "evaluation" ? "test" : binding?.releaseId ? "serving" : "playground",
         releaseId: binding?.releaseId, executionKey: binding?.executionKey, input: binding?.input, sessionId: binding?.sessionId, turn,
       } });
     });

@@ -12,6 +12,10 @@ New service-created runs now execute through LangChain `createAgent` with Postgr
 
 Serving execution now resolves an approved immutable release, independently of editable drafts. Playground supports revision-pinned conversations and release rollback is available in Versions. See [release gates, APIs, session limits and verification boundaries](releases-and-conversations.md). The older descriptions below of publication as a version flag are superseded by this implementation.
 
+## Isolated evaluation state
+
+Evaluation domain actions now use disposable, per-case fixture state in a dedicated database on the same PostgreSQL instance. Live workspace tickets and orders are outside that write path. See [setup, scoped repositories, teardown and verified limits](isolated-evaluations.md). Earlier descriptions below of blanket evaluation write denial are superseded for supported domain tools.
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.
