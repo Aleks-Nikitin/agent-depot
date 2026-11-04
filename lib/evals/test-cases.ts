@@ -2,6 +2,8 @@ import { io } from "next/cache";
 import { ZodError, z } from "zod";
 import { configError } from "@/lib/agents/library/http";
 import { getDb } from "@/lib/db/prisma";
+import { EvaluationSeedSchema } from "./isolation/fixtures";
+import { StateAssertionsSchema } from "./state/schema";
 import { TestCaseInputSchema, TestSourceSchema } from "./schema";
 import type { TestCase } from "./types";
 import type { Prisma } from "../../generated/prisma/client";
@@ -18,10 +20,10 @@ export async function lockTestAgent(tx: Prisma.TransactionClient, ownerId: strin
 /** "fixtures" keeps the original fake test cases for UI work without a database. */
 export const TESTS_SOURCE = "db" as "db" | "fixtures";
 
-type Row = { id: string; input: string; mustCall: string[]; mustNotCall: string[]; mustContain: string[]; useGrader: boolean; expectedBehavior?: string | null; source: string };
+type Row = { fixtures?: unknown; stateAssertions?: unknown; id: string; input: string; mustCall: string[]; mustNotCall: string[]; mustContain: string[]; useGrader: boolean; expectedBehavior?: string | null; source: string };
 
 function toTestCase(r: Row): TestCase {
-  return { id: r.id, input: r.input, mustCall: r.mustCall, mustNotCall: r.mustNotCall, mustContain: r.mustContain,
+  return { fixtures: EvaluationSeedSchema.parse(r.fixtures ?? {}), stateAssertions: StateAssertionsSchema.parse(r.stateAssertions ?? []), id: r.id, input: r.input, mustCall: r.mustCall, mustNotCall: r.mustNotCall, mustContain: r.mustContain,
     useGrader: r.useGrader, ...(r.expectedBehavior ? { expectedBehavior: r.expectedBehavior } : {}), source: TestSourceSchema.catch("user").parse(r.source) };
 }
 
@@ -62,6 +64,7 @@ export async function updateTestCase(ownerId: string, id: string, input: unknown
     if (!row) throw new Error("test_not_found");
     const data = TestCaseInputSchema.parse({ input: row.input, mustCall: row.mustCall, mustNotCall: row.mustNotCall,
       mustContain: row.mustContain, useGrader: row.useGrader, ...(row.expectedBehavior ? { expectedBehavior: row.expectedBehavior } : {}),
+      fixtures: row.fixtures, stateAssertions: row.stateAssertions,
       source: TestSourceSchema.catch("user").parse(row.source), ...patch });
     return toTestCase(await tx.testCase.update({ where: { id }, data }));
   });

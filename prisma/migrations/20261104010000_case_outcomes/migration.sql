@@ -1,0 +1,1 @@
+ALTER TABLE "TestCase" ADD COLUMN "fixtures" JSONB NOT NULL DEFAULT '{}', ADD COLUMN "stateAssertions" JSONB NOT NULL DEFAULT '[]';

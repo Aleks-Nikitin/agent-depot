@@ -9,3 +9,7 @@ export const EvaluationFixturesSchema = z.object({
   products: z.array(z.object({ id: z.string(), name: z.string(), category: z.string(), price: z.number().nonnegative(), unitsSold: z.number().int().nonnegative() }).strict()).max(100).default(() => structuredClone(products)),
 }).strict();
 export type EvaluationFixtures = z.infer<typeof EvaluationFixturesSchema>;
+
+/** Case-authored fixture overrides; omitted knowledge uses the suite snapshot. */
+export const EvaluationSeedSchema = EvaluationFixturesSchema.partial();
+export type EvaluationSeed = z.infer<typeof EvaluationSeedSchema>;

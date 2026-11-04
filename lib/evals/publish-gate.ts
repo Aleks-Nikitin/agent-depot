@@ -1,3 +1,4 @@
+import { StateEvidenceSchema } from "./state/evidence";
 import { io } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db/prisma";
@@ -9,6 +10,7 @@ import { AgentConfigSchema } from "@/lib/agents/contracts";
 import { testFingerprint } from "./fingerprint";
 
 const StoredResultSchema = z.object({
+  stateEvidence: StateEvidenceSchema.optional(),
   testCaseId: z.string(), status: z.enum(["passed", "failed", "error"]), failures: z.array(z.string()).default([]),
   response: z.string().nullable().default(null), runId: z.string().nullable().default(null),
   durationMs: z.number().nullable().default(null), costUsd: z.number().nullable().default(null),

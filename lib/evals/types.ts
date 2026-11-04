@@ -1,7 +1,13 @@
+import type { StateEvidence } from "./state/evidence";
+import type { EvaluationSeed } from "./isolation/fixtures";
+import type { StateAssertion } from "./state/schema";
+
 export type TestSource = "gemini" | "user" | "template";
 
 export type TestCase = {
   id: string;
+  fixtures?: EvaluationSeed;
+  stateAssertions?: StateAssertion[];
   input: string;
   mustCall: string[];
   mustNotCall: string[];
@@ -15,6 +21,7 @@ export type TestCase = {
 export type TestCaseStatus = "pending" | "running" | "passed" | "failed" | "error";
 
 export type TestResult = {
+  stateEvidence?: StateEvidence;
   testCaseId: string;
   status: "passed" | "failed" | "error";
   /** Human-readable, e.g. "Answer did not contain 'not in our policy'". */

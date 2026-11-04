@@ -1,3 +1,7 @@
+import { EvaluationFixturesSchema, EvaluationSeedSchema } from "./isolation/fixtures";
+import { StateAssertionsSchema, type StateSnapshot } from "./state/schema";
+import { normalizedSnapshot, checkState } from "./state/check";
+import { stateEvidence } from "./state/evidence";
 import { createIsolatedAttempt } from "./isolation/attempt";
 import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
 import { AgentConfigSchema, type RunStep } from "@/lib/agents/contracts";
@@ -30,7 +34,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     const cutoff = new Date(Date.now() - 180_000);
     if (await tx.testRun.findFirst({ where: { agentId, status: "running", createdAt: { gt: cutoff } } })) throw new HttpError(409, "evaluation_running");
     await tx.testRun.updateMany({ where: { agentId, status: "running" }, data: { status: "failed", passed: false } });
-    const cases: TestCase[] = rows.map(row => ({ ...row, source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
+    const cases: TestCase[] = rows.map(row => ({ ...row, fixtures: EvaluationSeedSchema.parse(row.fixtures), stateAssertions: StateAssertionsSchema.parse(row.stateAssertions), source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
       passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
     const documents = await tx.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100,
@@ -52,8 +56,11 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
       const steps: RunStep[] = [];
       let attempt: Awaited<ReturnType<typeof createIsolatedAttempt>> | undefined;
       let checked: TestResult;
+      let before: StateSnapshot | undefined; let after: StateSnapshot | undefined;
+      let sourceCompleted = false;
       try {
-        attempt = await createIsolatedAttempt({ ownerId, suiteId: record.id, caseId: testCase.id, fixtures: { knowledge } });
+        attempt = await createIsolatedAttempt({ ownerId, suiteId: record.id, caseId: testCase.id, fixtures: EvaluationFixturesSchema.parse({ knowledge, ...testCase.fixtures }) });
+        before = normalizedSnapshot(await attempt.snapshot());
         // Only tools backed by the scoped repository can access fixture state.
         // External retrieval cannot consult live services during an isolated case.
         const registry = new Map([...deps.registry].map(([id, tool]) => [id, tool.domainScoped || tool.retired ? tool
@@ -61,10 +68,14 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         const result = await runAgent({ config: { ...config, limits: { ...config.limits, maxEstimatedCostUsd: budget,
           timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "human" },
         { ...deps, domain: attempt.repository, registry, signal: deadline, onEvent: event => { steps.push(event); } });
+        sourceCompleted = result.status === "completed";
+        after = normalizedSnapshot(await attempt.snapshot());
         checked = checkTestCase(testCase, { steps, response: result.response });
         if (result.status !== "completed") { checked.status = "error"; checked.failures.push("evaluation run did not complete"); }
+        const outcome = checkState(testCase, before, after);
+        if (!outcome.passed) { checked.status = "failed"; checked.failures.push(...outcome.assertions.flatMap(a => a.reason ? [a.reason] : [])); }
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;
-        if (testCase.useGrader && result.status === "completed") {
+        if (testCase.useGrader && result.status === "completed" && checked.status === "passed") {
           const gradingInput = { instructions: config.instructions, question: testCase.input, answer: result.response ?? "",
             toolOutputs: steps.filter(event => event.type === "tool_finished").map(event => event.payload.output), expectedBehavior: testCase.expectedBehavior };
           const reservation = deps.driver.estimate(Buffer.byteLength(JSON.stringify(gradingInput), "utf8") * 2 + 2048, 256);
@@ -83,10 +94,20 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         checked = { testCaseId: testCase.id, status: "error", failures: ["evaluation execution unavailable"], response: null,
           runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null };
       } finally {
+        if (attempt && before && !after) {
+          try { after = normalizedSnapshot(await attempt.snapshot()); } catch { /* Unavailable state cannot pass. */ }
+        }
         try { await attempt?.dispose(); }
         catch {
           checked = { testCaseId: testCase.id, status: "error", failures: ["evaluation fixture cleanup unavailable"], response: null,
             runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null };
+        }
+      }
+      if (before && after) {
+        checked!.stateEvidence = stateEvidence({ manifestHash: null, test: testCase, runId: checked!.runId, sourceCompleted, before, after });
+        if (!checked!.stateEvidence.passed) {
+          if (checked!.status === "passed") checked!.status = "failed";
+          checked!.failures = [...new Set([...checked!.failures, ...checked!.stateEvidence.assertions.flatMap(a => a.reason ? [a.reason] : [])])];
         }
       }
       results.push(checked!);

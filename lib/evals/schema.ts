@@ -1,3 +1,5 @@
+import { EvaluationSeedSchema } from "./isolation/fixtures";
+import { StateAssertionsSchema } from "./state/schema";
 import { z } from "zod";
 
 // Browser-safe tool IDs for test forms; schema.test.ts keeps this list aligned with the trusted runtime.
@@ -12,6 +14,8 @@ export type ToolId = z.infer<typeof ToolIdSchema>;
 export const TestSourceSchema = z.enum(["gemini", "template", "user"]);
 
 export const TestCaseInputSchema = z.object({
+  fixtures: EvaluationSeedSchema.optional(),
+  stateAssertions: StateAssertionsSchema.optional(),
   input: z.string().trim().min(1, "Enter the question to test").max(8000, "Keep the question under 8,000 characters"),
   mustCall: z.array(ToolIdSchema).max(10).default([]),
   mustNotCall: z.array(ToolIdSchema).max(10).default([]),

@@ -239,6 +239,8 @@ model RecordedEmail {
 
 // NEW
 model TestCase {
+  fixtures Json @default("{}")
+  stateAssertions Json @default("[]")
   id          String   @id @default(uuid())
   agentId     String
   input       String

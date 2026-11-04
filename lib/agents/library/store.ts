@@ -1,3 +1,5 @@
+import { EvaluationSeedSchema } from "@/lib/evals/isolation/fixtures";
+import { StateAssertionsSchema } from "@/lib/evals/state/schema";
 import { ensureWorkspace } from "../workspace";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
@@ -186,7 +188,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     const cases = await tx.testCase.findMany({ where: { agentId: id }, take: 5, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (cases.length) await tx.testCase.createMany({ data: cases.map(test => ({ agentId: newId, input: test.input,
       mustCall: test.mustCall, mustNotCall: test.mustNotCall, mustContain: test.mustContain, useGrader: test.useGrader,
-      expectedBehavior: test.expectedBehavior, source: test.source })) });
+      fixtures: EvaluationSeedSchema.parse(test.fixtures), stateAssertions: StateAssertionsSchema.parse(test.stateAssertions), expectedBehavior: test.expectedBehavior, source: test.source })) });
   });
   return getAgent(ownerId, newId);
 }

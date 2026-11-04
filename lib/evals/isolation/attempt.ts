@@ -64,7 +64,8 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
     async snapshot() {
       active();
       return { tickets: (await client.query(`SELECT "id","ownerId","idempotencyKey","subject" FROM ${schema}."DemoTicket" ORDER BY "id"`)).rows,
-        orders: (await client.query(`SELECT * FROM ${schema}."WorkspaceOrder" ORDER BY "id"`)).rows };
+        orders: (await client.query(`SELECT * FROM ${schema}."WorkspaceOrder" ORDER BY "id"`)).rows,
+        knowledge: (await client.query(`SELECT "id","ownerId","title","text" FROM ${schema}."KnowledgeDocument" ORDER BY "id"`)).rows };
     },
     async dispose() {
       if (!open) return;
