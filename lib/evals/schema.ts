@@ -24,6 +24,7 @@ export const TestCaseInputSchema = z.object({
   expectedBehavior: z.string().trim().min(1).max(2000).optional(),
   source: TestSourceSchema.default("user"),
 }).strict().superRefine((value, ctx) => {
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 2_000_000) ctx.addIssue({ code: "custom", path: ["fixtures"], message: "Case state exceeds the 2 MB limit" });
   for (const tool of value.mustCall) {
     if (value.mustNotCall.includes(tool)) {
       ctx.addIssue({ code: "custom", path: ["mustNotCall"], message: `"${tool}" can't be in both Must call and Must not call` });

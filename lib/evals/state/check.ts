@@ -26,11 +26,11 @@ export function effectiveAssertions(test: { mustCall: string[]; stateAssertions?
   return [
     { kind: "unchanged", table: "orders" }, { kind: "unchanged", table: "knowledge" },
     ...before.tickets.map(row => ({ kind: "unchanged" as const, table: "tickets" as const, where: { id: row.id } })),
-    ...(custom.some(a => a.kind === "count" && a.table === "tickets" && !a.where) ? [] : [{ kind: "count" as const, table: "tickets" as const, equals: before.tickets.length + (test.mustCall.includes("create_ticket") ? 1 : 0) }]),
+    ...(custom.some(a => a.kind === "count" && a.table === "tickets" && (!a.where || Object.keys(a.where).length === 0)) ? [] : [{ kind: "count" as const, table: "tickets" as const, equals: before.tickets.length + (test.mustCall.includes("create_ticket") ? 1 : 0) }]),
     ...custom,
   ];
 }
-export function checkState(test: { mustCall: string[]; stateAssertions?: StateAssertion[] }, before: StateSnapshot, after: StateSnapshot) {
+export function checkState(test: { mustCall: string[]; stateAssertions?: StateAssertion[] }, before: StateSnapshot, after: StateSnapshot, ownerId?: string) {
   const matches = (row: object, fields: Record<string, string | number> = {}) => Object.entries(fields).every(([key, value]) => Object.hasOwn(row, key) && (row as Record<string, unknown>)[key] === value);
   const assertions = effectiveAssertions(test, before).map(assertion => {
     const old = before[assertion.table].filter(row => matches(row, assertion.where));
@@ -40,5 +40,6 @@ export function checkState(test: { mustCall: string[]; stateAssertions?: StateAs
       : artifactHash(old) === artifactHash(next);
     return { assertion, passed, reason: passed ? null : `State assertion failed: ${assertion.table} ${assertion.kind}` };
   });
-  return { diff: stateDiff(before, after), assertions, passed: assertions.every(result => result.passed) };
+  const ownershipValid = !ownerId || Object.values(after).every(rows => rows.every(row => row.ownerId === ownerId));
+  return { diff: stateDiff(before, after), assertions, ownershipValid, passed: ownershipValid && assertions.every(result => result.passed) };
 }

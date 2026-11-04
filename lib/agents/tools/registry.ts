@@ -9,6 +9,7 @@ export type ToolContext = {
   idempotencyKey: string;
 };
 export type ToolDefinition = {
+  implementationVersion?: string;
   id: string; description: string; kind: "read" | "write";
   inputSchema: z.ZodType;
   outputSchema?: z.ZodType;

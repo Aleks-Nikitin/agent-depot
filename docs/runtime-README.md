@@ -16,6 +16,10 @@ Serving execution now resolves an approved immutable release, independently of e
 
 Evaluation domain actions now use disposable, per-case fixture state in a dedicated database on the same PostgreSQL instance. Live workspace tickets and orders are outside that write path. See [setup, scoped repositories, teardown and verified limits](isolated-evaluations.md). Earlier descriptions below of blanket evaluation write denial are superseded for supported domain tools.
 
+## Outcome evidence and publication
+
+Cases can seed fixtures and assert exact counts, record fields and forbidden mutations. Persisted diffs link to immutable evaluation manifests; promotion verifies current dependencies and recomputes outcome checks. See [case API, safety defaults and certification boundaries](outcome-evidence.md). Earlier descriptions of attempted-tool/text checks as sufficient publication evidence are superseded.
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.

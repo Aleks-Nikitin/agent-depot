@@ -18,9 +18,9 @@ export async function promoteRelease(ownerId: string, agentId: string, expectedV
     const draft = await tx.agentDraft.findUniqueOrThrow({ where: { agentId_version: { agentId, version: agent.version } } });
     const config = AgentConfigSchema.parse(draft.config);
     if (artifactHash(config) !== artifactHash(AgentConfigSchema.parse(agent.config))) throw new HttpError(409, "draft_changed");
-    const run = await tx.testRun.findFirstOrThrow({ where: { agentId, agentVersion: agent.version }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    const run = await tx.testRun.findFirstOrThrow({ where: { agentId, agentVersion: agent.version }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     const providerSettings = ProviderSettingsSchema.parse(run.providerSettings);
-    const evidence = { testRunId: run.id, testsFingerprint: run.testsFingerprint, results: run.results,
+    const evidence = { manifestHash: run.manifest!.hash, manifest: run.manifest!.payload, testRunId: run.id, testsFingerprint: run.testsFingerprint, results: run.results,
       passedCount: run.passedCount, totalCount: run.totalCount, finishedAt: run.finishedAt!.toISOString() };
     const configHash = artifactHash(config);
     const evidenceHash = artifactHash({ configHash, providerSettings, evidence });
@@ -33,6 +33,9 @@ export async function promoteRelease(ownerId: string, agentId: string, expectedV
     await tx.agent.update({ where: { id: agentId }, data: { servingReleaseId: release.id,
       servingGeneration: { increment: 1 }, published: true, publishedVersion: release.version } });
     return release;
+  }, { isolationLevel: "Serializable" }).catch(error => {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2034") throw new HttpError(409, "evaluation_dependencies_changed");
+    throw error;
   });
 }
 

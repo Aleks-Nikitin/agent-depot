@@ -259,6 +259,7 @@ model TestCase {
 
 // NEW
 model TestRun {
+  manifest EvaluationManifest?
   id           String   @id @default(uuid())
   agentId      String
   agentVersion Int
@@ -353,4 +354,12 @@ model WorkspaceOrder {
   currency String @default("USD")
   createdAt DateTime @default(now())
   @@unique([ownerId, orderId])
+}
+
+model EvaluationManifest {
+  testRunId String @id
+  hash String
+  payload Json
+  createdAt DateTime @default(now())
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
 }

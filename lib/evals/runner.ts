@@ -3,7 +3,7 @@ import { StateAssertionsSchema, type StateSnapshot } from "./state/schema";
 import { normalizedSnapshot, checkState } from "./state/check";
 import { stateEvidence } from "./state/evidence";
 import { createIsolatedAttempt } from "./isolation/attempt";
-import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
+import { buildEvaluationManifest, evaluationKnowledge } from "./manifest";
 import { AgentConfigSchema, type RunStep } from "@/lib/agents/contracts";
 import { runAgent, type RuntimeDependencies } from "@/lib/agents/runtime/run-agent";
 import { runtimeServices } from "@/lib/agents/runtime/services";
@@ -23,7 +23,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
   const db = getDb();
   const deps = dependencies ?? runtimeServices();
   const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]);
-  const { config, cases, record, knowledge } = await db.$transaction(async tx => {
+  const { config, cases, record, knowledge, manifest } = await db.$transaction(async tx => {
     const locked = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 0 } } });
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -37,10 +37,10 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     const cases: TestCase[] = rows.map(row => ({ ...row, fixtures: EvaluationSeedSchema.parse(row.fixtures), stateAssertions: StateAssertionsSchema.parse(row.stateAssertions), source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
       passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
-    const documents = await tx.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100,
-      select: { id: true, title: true, text: true } });
-    const knowledge = { documents: documents.length ? documents : structuredClone(knowledgeDocs), sample: documents.length === 0 };
-    return { config, cases, record, knowledge };
+    const knowledge = await evaluationKnowledge(tx, ownerId);
+    const manifest = buildEvaluationManifest({ config, cases, knowledge, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), registry: deps.registry });
+    await tx.evaluationManifest.create({ data: { testRunId: record.id, hash: manifest.hash, payload: manifest.payload } });
+    return { config, cases, record, knowledge, manifest };
   });
   const results: TestResult[] = [];
   const started = Date.now();
@@ -72,8 +72,8 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         after = normalizedSnapshot(await attempt.snapshot());
         checked = checkTestCase(testCase, { steps, response: result.response });
         if (result.status !== "completed") { checked.status = "error"; checked.failures.push("evaluation run did not complete"); }
-        const outcome = checkState(testCase, before, after);
-        if (!outcome.passed) { checked.status = "failed"; checked.failures.push(...outcome.assertions.flatMap(a => a.reason ? [a.reason] : [])); }
+        const outcome = checkState(testCase, before, after, ownerId);
+        if (!outcome.passed) { if (checked.status !== "error") checked.status = "failed"; checked.failures.push(...outcome.assertions.flatMap(a => a.reason ? [a.reason] : []), ...(!outcome.ownershipValid ? ["State contains records outside this owner"] : [])); }
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;
         if (testCase.useGrader && result.status === "completed" && checked.status === "passed") {
           const gradingInput = { instructions: config.instructions, question: testCase.input, answer: result.response ?? "",
@@ -104,10 +104,10 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         }
       }
       if (before && after) {
-        checked!.stateEvidence = stateEvidence({ manifestHash: null, test: testCase, runId: checked!.runId, sourceCompleted, before, after });
+        checked!.stateEvidence = stateEvidence({ ownerId, manifestHash: manifest.hash, test: testCase, runId: checked!.runId, sourceCompleted, before, after });
         if (!checked!.stateEvidence.passed) {
           if (checked!.status === "passed") checked!.status = "failed";
-          checked!.failures = [...new Set([...checked!.failures, ...checked!.stateEvidence.assertions.flatMap(a => a.reason ? [a.reason] : [])])];
+          checked!.failures = [...new Set([...checked!.failures, ...checked!.stateEvidence.assertions.flatMap(a => a.reason ? [a.reason] : []), ...(!checked!.stateEvidence.ownershipValid ? ["State contains records outside this owner"] : [])])];
         }
       }
       results.push(checked!);
@@ -117,7 +117,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
       passed: passedCount === cases.length, passedCount, status: "completed", finishedAt: new Date() } });
     if (saved.count !== 1) throw new Error("evaluation_superseded");
     return { version: config.version, ranAt: record.createdAt.toISOString(), durationMs: Date.now() - started,
-      costUsd: results.every(result => result.costUsd !== null) ? results.reduce((sum, result) => sum + result.costUsd!, 0) : null, results };
+      manifestHash: manifest.hash, costUsd: results.every(result => result.costUsd !== null) ? results.reduce((sum, result) => sum + result.costUsd!, 0) : null, results };
   } catch (error) {
     await db.testRun.updateMany({ where: { id: record.id, status: "running" }, data: { passed: false, status: "failed", finishedAt: new Date() } });
     throw error;

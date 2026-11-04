@@ -33,6 +33,7 @@ export type TestResult = {
 };
 
 export type TestRunReport = {
+  manifestHash?: string;
   version: number;
   ranAt: string;
   durationMs: number | null;

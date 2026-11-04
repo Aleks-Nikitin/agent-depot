@@ -1,3 +1,4 @@
+import { verifyOutcomeEvidence } from "./verify-evidence";
 import { StateEvidenceSchema } from "./state/evidence";
 import { io } from "next/cache";
 import { z } from "zod";
@@ -32,7 +33,7 @@ export type PublishStatus = {
 /** The most recent TestRun for this exact agent version, or null. */
 export async function latestTestRun(ownerId: string, agentId: string, agentVersion: number) {
   if (!await getDb().agent.findFirst({ where: { id: agentId, ownerId } })) throw new Error("agent_not_found");
-  return getDb().testRun.findFirst({ where: { agentId, agentVersion }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  return getDb().testRun.findFirst({ where: { agentId, agentVersion }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
 }
 
 /** Latest TestRun for a version in the Tests page's report shape; malformed stored results are skipped. */
@@ -42,7 +43,7 @@ export async function latestTestReport(ownerId: string, agentId: string, agentVe
   const results = (Array.isArray(run.results) ? run.results : [])
     .map(r => StoredResultSchema.safeParse(r)).filter(r => r.success).map(r => r.data);
   const sum = (values: Array<number | null>) => values.length && values.every(v => v != null) ? values.reduce<number>((a, b) => a + (b ?? 0), 0) : null;
-  return { version: run.agentVersion, ranAt: run.createdAt.toISOString(),
+  return { manifestHash: run.manifest?.hash, version: run.agentVersion, ranAt: run.createdAt.toISOString(),
     durationMs: sum(results.map(r => r.durationMs)), costUsd: sum(results.map(r => r.costUsd)), results };
 }
 
@@ -54,7 +55,7 @@ export async function getPublishStatus(ownerId: string, agentId: string, agentVe
   return readPublishStatus(getDb(), ownerId, agentId, agentVersion);
 }
 
-export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun">,
+export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun" | "agentRun" | "evaluationManifest" | "knowledgeDocument">,
   ownerId: string, agentId: string, agentVersion?: number): Promise<PublishStatus> {
   const agent = await db.agent.findFirst({ where: { id: agentId, ownerId }, select: { version: true } });
   if (!agent) throw new Error("agent_not_found");
@@ -82,6 +83,9 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
     || results.data.length !== testCount || new Set(results.data.map(result => result.testCaseId)).size !== testCount
     || results.data.some(result => result.status !== "passed" || result.failures.length !== 0 || !cases.some(test => test.id === result.testCaseId))) {
     return { canPublish: false, reason: "Evaluation evidence is incomplete", ...counts };
+  }
+  if (!await verifyOutcomeEvidence(db, AgentConfigSchema.parse(draft.config), cases, run, results.data)) {
+    return { canPublish: false, reason: "Outcome evidence is missing, invalid or stale. Run tests again", ...counts };
   }
   return { canPublish: true, reason: `All ${plural(run.totalCount, "test")} passed`, ...counts };
 }

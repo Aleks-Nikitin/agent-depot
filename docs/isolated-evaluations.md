@@ -33,7 +33,7 @@ Each case receives a new, server-generated schema in `agentdepot_eval`, seeded t
 - An illustrative delivered order `1042`, totaling 4,900 cents in USD.
 - The captured knowledge snapshot and the labeled sample product catalog.
 
-The internal fixture adapter also supports explicit bounded ticket/order/product seeds. These are server-side contracts; configurable case fixture editing and deterministic mutation assertions are not introduced here. Fixtures are limited to 2 MB. Each repository is bound to its owner and attempt ID, and ticket writes retain database-level conflict arbitration.
+Saved cases now support bounded fixture overrides and deterministic mutation assertions through the authenticated API; see [outcome evidence and publication checks](outcome-evidence.md). Fixtures are limited to 2 MB. Each repository is bound to its owner and attempt ID, and ticket writes retain database-level conflict arbitration.
 
 Only registered isolated repositories can authorize evaluation domain writes. Other write tools remain denied. External search/news/webpage calls are unavailable during isolated evaluation; they cannot silently retrieve live data. Existing explicit `approvalMode: "deny"` callers retain their deny-writes behavior. Normal serving and Playground tool policy is unchanged.
 
@@ -51,6 +51,6 @@ No automatic cleanup scheduler is installed. Live tables, database volumes and a
 
 Deterministic local PostgreSQL checks exercise owner-scoped live access, production-target rejection, independent concurrent fixture state, knowledge snapshots, idempotent fixture ticket writes, unchanged live ticket counts, successful/failed/cancelled suite teardown, expired-scope cleanup, and rejection of a closed evaluation cursor on resume. Existing runtime and release checks remain applicable. No live model call, hosted write/read or deployment verification is implied.
 
-Current case assertions still check answer text and attempted tools. Executing an isolated action is not yet a deterministic assertion that its fields or final business state are correct. Before/after mutation assertions and their release evidence manifests remain separate work. This is an application tool/data boundary, not a sandbox for arbitrary hostile code.
+Case assertions now include deterministic state checks, before/after diffs and manifests in addition to answer and attempted-tool checks. A successful call alone does not establish a correct outcome; the declared state expectations must pass. This is an application tool/data boundary, not a sandbox for arbitrary hostile code.
 
 Local verification for this change: typecheck, lint, 119 unit tests and 18 focused PostgreSQL integration checks passed. The Turbopack production build remains blocked by the execution environment denying the CSS worker a local port bind; no bundler workaround or hosted verification is claimed.

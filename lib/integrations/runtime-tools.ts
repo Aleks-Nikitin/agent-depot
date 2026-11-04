@@ -6,6 +6,7 @@ import { lookupSales } from "./salesLookup";
 import { searchKnowledge } from "./knowledgeSearch";
 
 export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).map(tool => ({
+  implementationVersion: "domain-tools-v1",
   id: tool.id, description: tool.description,
   kind: tool.kind,
   domainScoped: ["knowledge_search", "sales_lookup"].includes(tool.id),
@@ -35,6 +36,7 @@ export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).ma
 // Keep saved configurations using the original local ticket integration compatible.
 runtimeTools.push(...demoTools.filter(tool => tool.id === "create_ticket"));
 runtimeTools.push({
+  implementationVersion: "domain-tools-v1",
   id: "order_lookup", description: "Look up an order in the current workspace. Missing orders return no record; no external shop is connected.",
   kind: "read", domainScoped: true, inputSchema: z.object({ orderId: z.string().trim().min(1).max(100) }).strict(),
   async run(input, context) {
