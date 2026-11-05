@@ -15,6 +15,7 @@ import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { ProviderSettingsSchema, captureProviderSettings } from "@/lib/agents/releases/provider-settings";
 import { testFingerprint } from "./fingerprint";
 import { TestSourceSchema } from "./schema";
+import { evaluationOutcome, PROVIDER_FAILURES } from "./outcome";
 import type { TestCase, TestResult, TestRunReport } from "./types";
 
 /** Same runtime, domain effects isolated per case. Suite budgets are estimates, not an invoice guarantee. */
@@ -50,7 +51,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
       const graderReservation = testCase.useGrader ? 0.01 : 0;
       const budget = Math.min(config.limits.maxEstimatedCostUsd, 0.02, 0.1 - reservedOrSpent - graderReservation);
       if (deadline.aborted || budget <= 0.00001) {
-        results.push({ testCaseId: testCase.id, status: "error", failures: [deadline.aborted ? "suite interrupted or timed out" : "suite budget reached"], response: null, runId: null, durationMs: null, costUsd: null });
+        results.push({ testCaseId: testCase.id, status: "error", outcome: "evaluation_unavailable", failures: [deadline.aborted ? "suite interrupted or timed out" : "suite budget reached"], response: null, runId: null, durationMs: null, costUsd: null });
         continue;
       }
       const steps: RunStep[] = [];
@@ -71,7 +72,15 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         sourceCompleted = result.status === "completed";
         after = normalizedSnapshot(await attempt.snapshot());
         checked = checkTestCase(testCase, { steps, response: result.response });
-        if (result.status !== "completed") { checked.status = "error"; checked.failures.push("evaluation run did not complete"); }
+        if (result.status !== "completed") {
+          checked.status = "error";
+          checked.failures.push("evaluation run did not complete");
+          if (PROVIDER_FAILURES.has(result.stopReason ?? "")) checked.outcome = "provider_unavailable";
+          // A forbidden attempt is an observed behavior failure even when execution stops safely.
+          else if (testCase.mustNotCall.some(id => steps.some(step => step.type === "tool_requested" && step.payload.toolId === id))) {
+            checked.status = "failed";
+          }
+        }
         const outcome = checkState(testCase, before, after, ownerId);
         if (!outcome.passed) { if (checked.status !== "error") checked.status = "failed"; checked.failures.push(...outcome.assertions.flatMap(a => a.reason ? [a.reason] : []), ...(!outcome.ownershipValid ? ["State contains records outside this owner"] : [])); }
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;
@@ -84,14 +93,14 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
             const grade = await grader(gradingInput, { signal: deadline, trackUsage: true });
             reservedOrSpent += grade.estimatedCostUsd ?? reservation;
             if (grade.estimatedCostUsd == null) reservedOrSpent = 0.1;
-            if (grade.unavailable) { checked.status = "error"; checked.failures.push("grader unavailable"); }
+            if (grade.unavailable) { checked.status = "error"; checked.outcome = "grader_unavailable"; checked.failures.push("grader unavailable"); }
             else if (!grade.followsPolicy) { checked.status = "failed"; checked.failures.push(grade.reason); }
             checked.costUsd = checked.costUsd !== null && grade.estimatedCostUsd != null ? checked.costUsd + grade.estimatedCostUsd : null;
           }
         }
-      } catch {
+      } catch (error) {
         reservedOrSpent += budget + graderReservation;
-        checked = { testCaseId: testCase.id, status: "error", failures: ["evaluation execution unavailable"], response: null,
+        checked = { testCaseId: testCase.id, status: "error", outcome: error instanceof Error && PROVIDER_FAILURES.has(error.message) ? "provider_unavailable" : "evaluation_unavailable", failures: ["evaluation execution unavailable"], response: null,
           runId: steps[0]?.runId ?? null, durationMs: null, costUsd: null };
       } finally {
         if (attempt && before && !after) {
@@ -110,6 +119,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
           checked!.failures = [...new Set([...checked!.failures, ...checked!.stateEvidence.assertions.flatMap(a => a.reason ? [a.reason] : []), ...(!checked!.stateEvidence.ownershipValid ? ["State contains records outside this owner"] : [])])];
         }
       }
+      checked!.outcome = evaluationOutcome(checked!);
       results.push(checked!);
     }
     const passedCount = results.filter(result => result.status === "passed").length;

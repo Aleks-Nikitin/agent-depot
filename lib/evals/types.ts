@@ -19,8 +19,11 @@ export type TestCase = {
 };
 
 export type TestCaseStatus = "pending" | "running" | "passed" | "failed" | "error";
+export type EvaluationOutcome = "pass" | "behavior_failure" | "provider_unavailable" | "grader_unavailable" | "evaluation_unavailable";
 
 export type TestResult = {
+  /** Separate infrastructure availability from observed agent behavior. Optional for historical reports. */
+  outcome?: EvaluationOutcome;
   stateEvidence?: StateEvidence;
   testCaseId: string;
   status: "passed" | "failed" | "error";

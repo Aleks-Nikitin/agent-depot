@@ -122,7 +122,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   const allPassed = cases.length > 0 && passedCount === cases.length;
   const version = publish?.agentVersion ?? agent.version;
   // Database mode trusts only the server gate; fixture mode keeps the local all-passed rule.
-  const canPublish = publish ? publish.canPublish : allPassed;
+  const canPublish = publish ? publish.canPublish && allPassed : allPassed;
   const lockReason = publish ? publish.reason
     : !cases.length ? "Add at least one test before publishing"
     : failingCases.length ? `${failingCases.length} test${failingCases.length === 1 ? "" : "s"} failing` : "Every test must pass first";

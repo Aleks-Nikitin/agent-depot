@@ -11,6 +11,7 @@ import { AgentConfigSchema } from "@/lib/agents/contracts";
 import { testFingerprint } from "./fingerprint";
 
 const StoredResultSchema = z.object({
+  outcome: z.enum(["pass", "behavior_failure", "provider_unavailable", "grader_unavailable", "evaluation_unavailable"]).optional(),
   stateEvidence: StateEvidenceSchema.optional(),
   testCaseId: z.string(), status: z.enum(["passed", "failed", "error"]), failures: z.array(z.string()).default([]),
   response: z.string().nullable().default(null), runId: z.string().nullable().default(null),
@@ -81,7 +82,7 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
   const results = z.array(StoredResultSchema).safeParse(run.results);
   if (!run.finishedAt || !results.success || run.totalCount !== testCount || run.passedCount !== testCount
     || results.data.length !== testCount || new Set(results.data.map(result => result.testCaseId)).size !== testCount
-    || results.data.some(result => result.status !== "passed" || result.failures.length !== 0 || !cases.some(test => test.id === result.testCaseId))) {
+    || results.data.some(result => result.status !== "passed" || (result.outcome && result.outcome !== "pass") || result.failures.length !== 0 || !cases.some(test => test.id === result.testCaseId))) {
     return { canPublish: false, reason: "Evaluation evidence is incomplete", ...counts };
   }
   if (!await verifyOutcomeEvidence(db, AgentConfigSchema.parse(draft.config), cases, run, results.data)) {
