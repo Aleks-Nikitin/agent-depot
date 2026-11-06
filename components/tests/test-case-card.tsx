@@ -87,7 +87,7 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
         <div className="border-t border-(--ad-error-border) bg-(--ad-error-bg)/50 p-5">
           <div className="flex items-center justify-between gap-3">
             <span className="ad-mono text-[11px] font-medium tracking-wider text-(--ad-error) uppercase">
-              {status === "error" ? "Not evaluated" : "Why it failed"}
+              {status === "error" ? OUTCOME_LABELS[evaluationOutcome(result)] : "Why it failed"}
             </span>
             {result.runId && <ButtonLink href={`/runs/${result.runId}`} size="sm" className="ad-mono">View trace</ButtonLink>}
           </div>

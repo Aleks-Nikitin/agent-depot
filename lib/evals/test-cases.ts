@@ -8,6 +8,9 @@ import { TestCaseInputSchema, TestSourceSchema } from "./schema";
 import type { TestCase } from "./types";
 import type { Prisma } from "../../generated/prisma/client";
 import { HttpError } from "@/lib/auth/errors";
+import { AgentConfigSchema } from "@/lib/agents/contracts";
+import { artifactHash } from "@/lib/agents/releases/fingerprint";
+import { supportRegressionCases, SUPPORT_REGRESSION_TOOLS } from "./regression-pack";
 
 export async function lockTestAgent(tx: Prisma.TransactionClient, ownerId: string, agentId: string) {
   const result = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 1 } } });
@@ -51,6 +54,23 @@ export async function createTestCase(ownerId: string, agentId: string, input: un
     await lockTestAgent(tx, ownerId, agentId);
     if (await tx.testCase.count({ where: { agentId } }) >= 5) throw new HttpError(409, "test_case_limit");
     return toTestCase(await tx.testCase.create({ data: { agentId, ...data } }));
+  });
+}
+
+/** Atomically add the reviewed pack; retries preserve IDs/evidence and never replace user cases. */
+export async function installSupportRegressionPack(ownerId: string, agentId: string): Promise<TestCase[]> {
+  return getDb().$transaction(async tx => {
+    await lockTestAgent(tx, ownerId, agentId);
+    const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
+    const config = AgentConfigSchema.parse(agent.config);
+    if (SUPPORT_REGRESSION_TOOLS.some(tool => !config.enabledTools.includes(tool))) throw new HttpError(409, "regression_pack_requires_support_tools");
+    const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const signature = (definition: Omit<TestCase, "id">) => artifactHash({ ...TestCaseInputSchema.parse(definition), fixtures: definition.fixtures ?? {}, stateAssertions: definition.stateAssertions ?? [] });
+    const existing = new Set(rows.map(row => { const { id, ...definition } = toTestCase(row); void id; return signature(definition); }));
+    const missing = supportRegressionCases().filter(definition => !existing.has(signature(definition)));
+    if (rows.length + missing.length > 5) throw new HttpError(409, "regression_pack_needs_four_slots");
+    for (const data of missing) await tx.testCase.create({ data: { agentId, ...data } });
+    return (await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toTestCase);
   });
 }
 
