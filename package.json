@@ -30,7 +30,9 @@
     "test:timescale": "tsx scripts/test-timescale.ts",
     "runtime:setup": "tsx scripts/setup-graph-checkpoints.ts",
     "eval:setup": "tsx scripts/setup-evaluation-db.ts",
-    "eval:cleanup": "tsx scripts/cleanup-evaluation-db.ts"
+    "eval:cleanup": "tsx scripts/cleanup-evaluation-db.ts",
+    "worker": "tsx scripts/worker.ts",
+    "worker:setup": "tsx scripts/setup-worker.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.105",
@@ -44,6 +46,7 @@
     "ai": "^7.0.153",
     "better-auth": "1.7.12",
     "dotenv": "^18.0.9",
+    "graphile-worker": "^0.18.0",
     "langchain": "^1.6.0",
     "langsmith": "^0.11.5",
     "next": "16.4.3",

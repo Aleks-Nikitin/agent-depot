@@ -259,6 +259,7 @@ model TestCase {
 
 // NEW
 model TestRun {
+  jobId        String? @unique
   manifest EvaluationManifest?
   id           String   @id @default(uuid())
   agentId      String
@@ -275,6 +276,37 @@ model TestRun {
   createdAt    DateTime @default(now())
 
   @@index([agentId, agentVersion, createdAt])
+}
+
+// Application receipts, separate from Graphile's vendor queue tables.
+model ExecutionJob {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  requestKey String @unique
+  requestHash String
+  kind String
+  payload Json
+  status String @default("queued")
+  runId String?
+  testRunId String?
+  cancelRequested Boolean @default(false)
+  result Json?
+  reason String?
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  @@index([ownerId, agentId, status])
+}
+
+// Receipt and local effect commit in the same transaction.
+model LocalOperation {
+  key String @id
+  ownerId String
+  toolId String
+  inputHash String
+  result Json
+  createdAt DateTime @default(now())
+  @@index([ownerId])
 }
 
 // One private container per owner; owner-scoped resources retain their existing IDs.

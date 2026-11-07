@@ -21,9 +21,9 @@ export type RuntimeDependencies = {
   signal?: AbortSignal; onEvent?: (event: RunStep) => void | Promise<void>;
 };
 
-export async function runAgent(options: {
+export async function prepareAgentRun(options: {
   config: AgentConfig; ownerId: string; message: string; history?: ModelMessage[]; providerSettings?: ProviderSettings; binding?: RunBinding; approvalMode?: "human" | "deny";
-}, deps: RuntimeDependencies): Promise<AgentRunResult> {
+}, deps: RuntimeDependencies) {
   const config = AgentConfigSchema.parse(options.config);
   if (config.ownerId !== options.ownerId) throw new Error("agent_not_found");
   const { message } = RunRequestSchema.parse({ message: options.message });
@@ -41,7 +41,19 @@ export async function runAgent(options: {
     startedAt: Date.now(), activeMs: 0, approvalMode: options.approvalMode ?? "human", driverKey: deps.driver.key,
   };
   const run = await deps.store.createRun(config, state, options.binding);
-  return withoutPayloadTracing(() => executeGraph(run.id, options.ownerId, deps, undefined, "run_started"));
+  return run;
+}
+
+export async function executePreparedRun(runId: string, ownerId: string, deps: RuntimeDependencies): Promise<AgentRunResult> {
+  const loaded = await deps.store.loadRun(runId, ownerId);
+  if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(loaded.config, loaded.state.providerSettings) };
+  deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
+  return withoutPayloadTracing(() => executeGraph(runId, ownerId, deps, undefined, "run_started"));
+}
+
+export async function runAgent(options: Parameters<typeof prepareAgentRun>[0], deps: RuntimeDependencies): Promise<AgentRunResult> {
+  const run = await prepareAgentRun(options, deps);
+  return executePreparedRun(run.id, options.ownerId, deps);
 }
 
 export async function resumeAgent(options: { approvalId: string; ownerId: string; approved: boolean }, deps: RuntimeDependencies) {

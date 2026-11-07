@@ -41,6 +41,10 @@ export async function latestTestRun(ownerId: string, agentId: string, agentVersi
 export async function latestTestReport(ownerId: string, agentId: string, agentVersion: number): Promise<TestRunReport | null> {
   const run = await latestTestRun(ownerId, agentId, agentVersion);
   if (!run) return null;
+  return testReportFromRecord(run);
+}
+
+export function testReportFromRecord(run: { results: unknown; agentVersion: number; createdAt: Date; manifest?: { hash: string } | null }): TestRunReport {
   const results = (Array.isArray(run.results) ? run.results : [])
     .map(r => StoredResultSchema.safeParse(r)).filter(r => r.success).map(r => r.data);
   const sum = (values: Array<number | null>) => values.length && values.every(v => v != null) ? values.reduce<number>((a, b) => a + (b ?? 0), 0) : null;

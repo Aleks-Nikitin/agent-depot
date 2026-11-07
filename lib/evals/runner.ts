@@ -15,16 +15,13 @@ import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { ProviderSettingsSchema, captureProviderSettings } from "@/lib/agents/releases/provider-settings";
 import { testFingerprint } from "./fingerprint";
 import { TestSourceSchema } from "./schema";
+import type { Prisma } from "@/generated/prisma/client";
 import { evaluationOutcome, PROVIDER_FAILURES } from "./outcome";
 import type { TestCase, TestResult, TestRunReport } from "./types";
 
-/** Same runtime, domain effects isolated per case. Suite budgets are estimates, not an invoice guarantee. */
-export async function runEvaluation(ownerId: string, agentId: string, signal?: AbortSignal,
-  dependencies?: RuntimeDependencies, grader = gradeAnswer): Promise<TestRunReport> {
+export async function prepareEvaluation(ownerId: string, agentId: string, deps: RuntimeDependencies, transaction?: Prisma.TransactionClient) {
   const db = getDb();
-  const deps = dependencies ?? runtimeServices();
-  const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]);
-  const { config, cases, record, knowledge, manifest } = await db.$transaction(async tx => {
+  const capture = async (tx: Prisma.TransactionClient) => {
     const locked = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 0 } } });
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
@@ -33,8 +30,8 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (!rows.length || rows.length > 5) throw new HttpError(409, "suite_requires_one_to_five_tests");
     const cutoff = new Date(Date.now() - 180_000);
-    if (await tx.testRun.findFirst({ where: { agentId, status: "running", createdAt: { gt: cutoff } } })) throw new HttpError(409, "evaluation_running");
-    await tx.testRun.updateMany({ where: { agentId, status: "running" }, data: { status: "failed", passed: false } });
+    if (await tx.testRun.findFirst({ where: { agentId, status: "running", OR: [{ jobId: { not: null } }, { createdAt: { gt: cutoff } }] } })) throw new HttpError(409, "evaluation_running");
+    await tx.testRun.updateMany({ where: { agentId, status: "running", jobId: null }, data: { status: "failed", passed: false } });
     const cases: TestCase[] = rows.map(row => ({ ...row, fixtures: EvaluationSeedSchema.parse(row.fixtures), stateAssertions: StateAssertionsSchema.parse(row.stateAssertions), source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
       passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
@@ -42,7 +39,20 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
     const manifest = buildEvaluationManifest({ config, cases, knowledge, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), registry: deps.registry });
     await tx.evaluationManifest.create({ data: { testRunId: record.id, hash: manifest.hash, payload: manifest.payload } });
     return { config, cases, record, knowledge, manifest };
-  });
+  };
+  return transaction ? capture(transaction) : db.$transaction(capture);
+}
+
+export type PreparedEvaluation = Awaited<ReturnType<typeof prepareEvaluation>>;
+
+/** Same runtime, domain effects isolated per case. Browser lifetime does not own queued execution. */
+export async function runEvaluation(ownerId: string, agentId: string, signal?: AbortSignal,
+  dependencies?: RuntimeDependencies, grader = gradeAnswer, prepared?: PreparedEvaluation): Promise<TestRunReport> {
+  const db = getDb();
+  const deps = dependencies ?? runtimeServices();
+  const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]);
+  const { config, cases, record, knowledge, manifest } = prepared ?? await prepareEvaluation(ownerId, agentId, deps);
+  if (config.ownerId !== ownerId || config.id !== agentId) throw new Error("evaluation_snapshot_mismatch");
   const results: TestResult[] = [];
   const started = Date.now();
   let reservedOrSpent = 0;
@@ -67,7 +77,8 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         const registry = new Map([...deps.registry].map(([id, tool]) => [id, tool.domainScoped || tool.retired ? tool
           : { ...tool, unavailable: () => "evaluation_external_tool_disabled" }]));
         const result = await runAgent({ config: { ...config, limits: { ...config.limits, maxEstimatedCostUsd: budget,
-          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "human" },
+          timeoutMs: Math.min(config.limits.timeoutMs, 30_000) } }, ownerId, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), message: testCase.input, approvalMode: "human",
+          binding: { executionKey: artifactHash({ suiteId: record.id, caseId: testCase.id }), input: testCase.input } },
         { ...deps, domain: attempt.repository, registry, signal: deadline, onEvent: event => { steps.push(event); } });
         sourceCompleted = result.status === "completed";
         after = normalizedSnapshot(await attempt.snapshot());

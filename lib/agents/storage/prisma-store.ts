@@ -28,8 +28,8 @@ async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventI
 export class PrismaRunStore {
   constructor(readonly db: PrismaClient) {}
 
-  async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding) {
-    return this.db.$transaction(async tx => {
+  async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding, transaction?: Tx) {
+    const create = async (tx: Tx) => {
       const id = randomUUID();
       let turn: number | undefined;
       if (binding?.sessionId) {
@@ -48,7 +48,8 @@ export class PrismaRunStore {
         agentVersion: config.version, source: checkpoint.approvalMode === "deny" || checkpoint.domainScope?.kind === "evaluation" ? "test" : binding?.releaseId ? "serving" : "playground",
         releaseId: binding?.releaseId, executionKey: binding?.executionKey, input: binding?.input, sessionId: binding?.sessionId, turn,
       } });
-    });
+    };
+    return transaction ? create(transaction) : this.db.$transaction(create);
   }
   async loadRun(runId: string, ownerId: string) {
     const run = await this.db.agentRun.findFirst({ where: { id: runId, ownerId } });
@@ -96,8 +97,8 @@ export class PrismaRunStore {
       return { approval, event, version: version + 1 };
     });
   }
-  async claimApproval(approvalId: string, ownerId: string, approved: boolean) {
-    return this.db.$transaction(async tx => {
+  async claimApproval(approvalId: string, ownerId: string, approved: boolean, transaction?: Tx) {
+    const claim = async (tx: Tx) => {
       const approval = await tx.approval.findFirst({ where: { id: approvalId, run: { ownerId } } });
       if (!approval) throw new Error("approval_not_found");
       if (approval.status !== "pending" || approval.expiresAt.getTime() <= Date.now()) throw new Error("approval_unavailable");
@@ -119,7 +120,8 @@ export class PrismaRunStore {
         approvalId, approved, toolCallId: approval.toolCallId,
       } });
       return { approval, event };
-    });
+    };
+    return transaction ? claim(transaction) : this.db.$transaction(claim);
   }
   async finishRun(runId: string, ownerId: string, version: number, state: Checkpoint,
     status: "completed" | "blocked" | "failed", response: string | null, stopReason: string | null) {

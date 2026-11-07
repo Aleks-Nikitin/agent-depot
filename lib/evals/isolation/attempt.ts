@@ -18,6 +18,12 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
   const client = await openEvaluationClient();
   const ownerId = options.ownerId;
   let open = true;
+  let writes: Promise<unknown> = Promise.resolve();
+  function serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const task = writes.then(operation);
+    writes = task.catch(() => {});
+    return task;
+  }
   try {
     await client.query("BEGIN");
     await client.query(`CREATE SCHEMA ${schema}`);
@@ -25,7 +31,8 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
       "idempotencyKey" TEXT UNIQUE NOT NULL, "subject" TEXT NOT NULL, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now());
       CREATE TABLE ${schema}."WorkspaceOrder" ("id" TEXT PRIMARY KEY, "ownerId" TEXT NOT NULL, "orderId" TEXT NOT NULL,
       "status" TEXT NOT NULL, "totalCents" INTEGER NOT NULL CHECK ("totalCents" >= 0), "currency" TEXT NOT NULL, UNIQUE ("ownerId", "orderId"));
-      CREATE TABLE ${schema}."KnowledgeDocument" ("id" TEXT PRIMARY KEY, "ownerId" TEXT NOT NULL, "title" TEXT NOT NULL, "text" TEXT NOT NULL)`);
+      CREATE TABLE ${schema}."KnowledgeDocument" ("id" TEXT PRIMARY KEY, "ownerId" TEXT NOT NULL, "title" TEXT NOT NULL, "text" TEXT NOT NULL);
+      CREATE TABLE ${schema}."LocalOperation" ("key" TEXT PRIMARY KEY, "ownerId" TEXT NOT NULL, "inputHash" TEXT NOT NULL, "result" JSONB NOT NULL)`);
     await client.query(`INSERT INTO agentdepot_eval."Attempt" ("id", "schemaName", "ownerId", "suiteId", "caseId", "knowledgeHash") VALUES ($1,$2,$3,$4,$5,$6)`,
       [id, schemaName, ownerId, options.suiteId, options.caseId, knowledgeHash]);
     for (const ticket of fixtures.tickets) await client.query(`INSERT INTO ${schema}."DemoTicket" ("id","ownerId","idempotencyKey","subject") VALUES ($1,$2,$3,$4)`, [ticket.id, ownerId, ticket.idempotencyKey, ticket.subject]);
@@ -50,12 +57,23 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
       return (await client.query<Order>(`SELECT "id","orderId","status","totalCents","currency" FROM ${schema}."WorkspaceOrder" WHERE "ownerId"=$1 AND "orderId"=$2`, [ownerId, orderId])).rows[0] ?? null;
     },
     async createTicket(idempotencyKey: string, subject: string) {
-      active();
-      await client.query(`INSERT INTO ${schema}."DemoTicket" ("id","ownerId","idempotencyKey","subject") VALUES ($1,$2,$3,$4) ON CONFLICT ("idempotencyKey") DO NOTHING`, [randomUUID(), ownerId, idempotencyKey, subject]);
-      active();
-      const ticket = (await client.query<Ticket & { ownerId: string }>(`SELECT "id","ownerId","subject" FROM ${schema}."DemoTicket" WHERE "idempotencyKey"=$1`, [idempotencyKey])).rows[0];
-      if (!ticket || ticket.ownerId !== ownerId || ticket.subject !== subject) throw new Error("idempotency_conflict");
-      return { id: ticket.id, subject: ticket.subject };
+      return serializeWrite(async () => {
+        active();
+        await client.query("BEGIN");
+        try {
+          const hash = artifactHash({ subject });
+          const prior = (await client.query<{ ownerId: string; inputHash: string; result: Ticket }>(`SELECT * FROM ${schema}."LocalOperation" WHERE "key"=$1`, [idempotencyKey])).rows[0];
+          if (prior && (prior.ownerId !== ownerId || prior.inputHash !== hash)) throw new Error("idempotency_conflict");
+          if (prior) { await client.query("COMMIT"); return prior.result; }
+          await client.query(`INSERT INTO ${schema}."DemoTicket" ("id","ownerId","idempotencyKey","subject") VALUES ($1,$2,$3,$4) ON CONFLICT ("idempotencyKey") DO NOTHING`, [randomUUID(), ownerId, idempotencyKey, subject]);
+          active();
+          const ticket = (await client.query<Ticket & { ownerId: string }>(`SELECT "id","ownerId","subject" FROM ${schema}."DemoTicket" WHERE "idempotencyKey"=$1`, [idempotencyKey])).rows[0];
+          if (!ticket || ticket.ownerId !== ownerId || ticket.subject !== subject) throw new Error("idempotency_conflict");
+          const result = { id: ticket.id, subject: ticket.subject };
+          await client.query(`INSERT INTO ${schema}."LocalOperation" ("key","ownerId","inputHash","result") VALUES ($1,$2,$3,$4)`, [idempotencyKey, ownerId, hash, result]);
+          await client.query("COMMIT"); return result;
+        } catch (error) { await client.query("ROLLBACK"); throw error; }
+      });
     },
   });
   registerIsolatedRepository(repository);
@@ -70,6 +88,7 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
     async dispose() {
       if (!open) return;
       open = false; revokeIsolatedRepository(repository);
+      await writes;
       try {
         await client.query("BEGIN");
         await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
