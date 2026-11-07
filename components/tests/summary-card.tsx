@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { waitForEvaluation } from "@/lib/jobs/client";
 import { Backlit } from "@/components/ui/backlit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -95,19 +96,22 @@ async function request(url: string, method: "POST" | "PATCH" | "DELETE", body?: 
 }
 
 /** Evaluation Lab screen state: cases, the latest results, running a suite, and the publish gate. */
-export function TestsScreen({ agent, initialCases, report, quality, tools, now, persist, publish }: {
+export function TestsScreen({ agent, initialCases, report, quality, tools, now, persist, publish, initialJobId }: {
   agent: AgentHeaderData; initialCases: TestCase[]; report: TestRunReport | null; quality: QualitySummary; tools: readonly string[]; now: number;
   /** true: saves go through /api (database); false: fixture mode, changes stay on this page. */
   persist: boolean;
   /** Server publish gate (database mode). Only a saved, passing TestRun for this version unlocks Publish. */
   publish?: PublishStatus;
+  initialJobId?: string;
 }) {
   const router = useRouter();
   const [cases, setCases] = useState(initialCases);
   const [publishing, setPublishing] = useState(false);
   const [results, setResults] = useState<Record<string, TestResult>>(() => Object.fromEntries((report?.results ?? []).map(r => [r.testCaseId, r])));
   const [running, setRunning] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [requestBusy, setBusy] = useState(false);
+  const [activeJob, setActiveJob] = useState(initialJobId ?? null);
+  const busy = requestBusy || !!activeJob;
   const [loadingPack, setLoadingPack] = useState(false);
   const [meta, setMeta] = useState<Meta | null>(report);
   const [clock, setClock] = useState(now);
@@ -117,6 +121,19 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState<TestCase | null>(null);
   const formRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!activeJob) return;
+    const controller = new AbortController();
+    void waitForEvaluation(activeJob, controller.signal, status => {
+      setNotice(status === "queued" ? "Evaluation queued. The background worker will start it." : "Evaluation running in the background. You can leave and return to this page.");
+    }).then(report => {
+      setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
+      setMeta(report); setClock(Date.now()); setNotice("Evaluation results saved. Review failures and database changes below.");
+    }).catch(error => { if (!controller.signal.aborted) { setActionError(error instanceof Error ? error.message : "Evaluation unavailable"); setNotice(null); } })
+      .finally(() => { if (!controller.signal.aborted) { setBusy(false); setActiveJob(null); router.refresh(); } });
+    return () => controller.abort();
+  }, [activeJob, router]);
 
   const statusOf = (c: TestCase): TestCaseStatus => running === c.id ? "running" : results[c.id]?.status ?? "pending";
   const statuses = cases.map(statusOf);
@@ -136,19 +153,21 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
 
   const runTests = async () => {
     if (loadingPack || publishing) return;
+    let enqueued = false;
     setBusy(true); setResults({}); setDismissed(false); setNotice(null); setActionError(null);
     try {
       let report: TestRunReport;
       if (persist) {
-        const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: "{}" });
         if (!response.ok) { const error = await response.json(); throw new Error(error.error ?? "evaluation_failed"); }
+        if (response.status === 202) { const receipt = await response.json() as { jobId: string }; enqueued = true; setActiveJob(receipt.jobId); return; }
         report = await response.json();
       } else report = await simulateTestRun(version, cases, () => {});
       setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
       setMeta(report); setClock(Date.now());
       if (persist) { setNotice("Test results saved for this agent version. Domain actions use disposable test data."); router.refresh(); }
     } catch (error) { setActionError(error instanceof Error ? error.message.replaceAll("_", " ") : "Could not run tests."); }
-    finally { setRunning(null); setBusy(false); }
+    finally { setRunning(null); if (!enqueued) setBusy(false); }
   };
 
   const addRegressionPack = async () => {
@@ -229,6 +248,10 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
         lockReason={lockReason} publishing={publishing} loadingPack={loadingPack} onRun={runTests} onPublish={publishNow} />
       {notice && <p role="status" className="rounded-xl border border-(--ad-success-border) bg-(--ad-success-bg) px-5 py-3 text-sm text-(--ad-success)">{notice}</p>}
       {actionError && <p role="alert" className="rounded-xl border border-(--ad-error-border) bg-(--ad-error-bg) px-5 py-3 text-sm text-(--ad-error)">{actionError}</p>}
+      {activeJob && <Button size="sm" onClick={async () => {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(activeJob)}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!response.ok) setActionError("Could not request cancellation.");
+      }}>Stop evaluation</Button>}
       {!busy && !dismissed && !canPublish && (
         <PublishBanner reason={lockReason} publishedVersion={agent.publishedVersion}
           firstFailingId={failingCases[0]?.id} onDismiss={() => setDismissed(true)} />

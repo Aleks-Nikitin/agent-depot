@@ -10,6 +10,7 @@ import { getPublishStatus, latestTestReport, getTestQuality } from "@/lib/evals/
 import { listTestCases, TESTS_SOURCE } from "@/lib/evals/test-cases";
 import { FIXTURE_NOW, getFixtureAgent } from "@/lib/fixtures/runs";
 import { fixtureQuality, fixtureTestCases, fixtureTestReport } from "@/lib/fixtures/tests";
+import { getDb } from "@/lib/db/prisma";
 
 export const metadata: Metadata = { title: "Tests · AgentDepot" };
 
@@ -19,7 +20,8 @@ async function loadSavedTests(ownerId: string, agentId: string) {
   const [cases, publish] = await Promise.all([listTestCases(ownerId, agentId), getPublishStatus(ownerId, agentId)]);
   const report = await latestTestReport(ownerId, agentId, publish.agentVersion);
   const quality = await getTestQuality(ownerId, agentId, publish.agentVersion, report);
-  return { cases, publish, report, quality, now: Date.now() };
+  const active = await getDb().executionJob.findFirst({ where: { ownerId, agentId, kind: "evaluation", status: { in: ["queued", "running"] } }, orderBy: { createdAt: "desc" } });
+  return { cases, publish, report, quality, initialJobId: active?.id, now: Date.now() };
 }
 
 async function Content({ params }: { params: Promise<{ id: string }> }) {
@@ -39,7 +41,7 @@ async function Content({ params }: { params: Promise<{ id: string }> }) {
     throw error;
   }
   return <TestsScreen key={`${agent.id}:${agent.version}`} agent={agent} initialCases={data.cases} report={data.report} quality={data.quality} tools={TOOL_IDS}
-    now={data.now} persist publish={data.publish} />;
+    now={data.now} persist publish={data.publish} initialJobId={data.initialJobId} />;
 }
 
 export default function TestsPage({ params }: PageProps<"/agents/[id]/tests">) {

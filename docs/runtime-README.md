@@ -22,6 +22,10 @@ Cases can seed fixtures and assert exact counts, record fields and forbidden mut
 
 The Evaluation Lab now shows distinct behavior/provider/grader outcomes and visual database diffs. Owners can add a four-case support adversarial suite without replacing existing cases. See [running the suite, inspecting failures and verification limits](evaluation-lab.md).
 
+## Background execution
+
+Run, approval and evaluation endpoints enqueue durable work for a standalone Graphile Worker process. Browser viewers reconnect to persisted event sequences and can explicitly request a stop. See [worker setup, 202 receipt contracts, cancellation, local effect receipts and interruption limits](background-execution.md). Earlier request-owned streaming descriptions are superseded for these endpoints.
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.

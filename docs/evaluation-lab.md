@@ -2,6 +2,8 @@
 
 Open a saved agent's Tests tab to run its cases, inspect recorded evidence, and see the server's publication decision. Results distinguish **Passed**, **Behavior failed**, **Provider unavailable**, **Grader unavailable**, and **Evaluation unavailable**. An unavailable service is never reported as a behavioral pass. Historical results without a recorded availability cause retain a conservative generic label.
 
+Suite execution now runs in the background. Keep the [standalone worker](background-execution.md) running alongside the web app. The Tests page reconnects to an active suite after refresh; closing the page does not cancel the suite. **Stop evaluation** requests cooperative cancellation. The run API returns a 202 job receipt, which API clients poll until results are available.
+
 Each case with state evidence includes **Database changes**. Failed state checks expand automatically. Inspect assertion verdicts, added/removed/changed records, and side-by-side before/after values. Expand **Full snapshots** to see every captured ticket, order and knowledge field, including unchanged records. Missing evidence is identified explicitly. Incomplete execution cannot pass even when the captured database assertions pass. These are isolated application snapshots; private runtime checkpoints are not exposed.
 
 The publication banner explains why the draft is blocked and links the first failing case. A failed draft leaves the approved serving release unchanged. The Publish button depends on the server gate and current local results; it cannot override the server's [manifest and outcome verification](outcome-evidence.md).

@@ -109,5 +109,9 @@ const reasons: Record<string, string> = {
   empty_response: "The model provider returned no answer. Try a more specific request",
   execution_failed: "This run stopped unexpectedly. No specific cause was recorded. Try a new run; if it repeats, share its run ID with the administrator", provider_failure: "Model provider failed", event_delivery_failed: "Event delivery failed",
   write_denied: "Write denied by the run policy", stream_ended: "Connection ended before the run finished",
+  cancelled: "Stopped at your request. Any completed actions remain recorded",
+  worker_interrupted: "Execution was interrupted. Review completed actions before starting a new request",
+  worker_execution_unavailable: "Background execution is unavailable. Review the saved trace before trying again",
+  cancellation_unavailable: "Could not request a stop. The run may still be active; reload its saved trace",
 };
 export const describeReason = (code: string) => reasons[code] ?? code;

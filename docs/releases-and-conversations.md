@@ -14,6 +14,8 @@ Older `published` flags are not automatically trusted as release artifacts. Afte
 
 ## Execution API
 
+Execution and conversation-message POSTs now return 202 job/run receipts, and approval decisions enqueue continuations atomically with their claims. Reconnect through persisted event cursors; browser disconnection no longer stops execution. See [current worker setup and transport contract](background-execution.md). Earlier streaming-POST descriptions below describe the prior transport; ownership, pinned revisions and idempotency requirements remain enforced.
+
 All endpoints require an authenticated owner session, including isolated guest sessions. Mutations retain the same-origin check.
 
 - `POST /api/agents/:id/publish` accepts `{ "expectedVersion": 3 }`. Success preserves the existing agent-detail response and includes the serving release ID/generation.

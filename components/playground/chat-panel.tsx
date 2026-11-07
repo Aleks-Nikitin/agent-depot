@@ -153,6 +153,7 @@ export function PlaygroundScreen({ agent, initialRunId, initialMessage, initialS
             {shown.runId && <TraceTotals totals={shown.totals} />}
             {shown.runId && <Link href={`/runs/${encodeURIComponent(shown.runId)}`} className="text-xs text-(--ad-model) hover:underline">Saved run</Link>}
             <div className="ml-auto flex gap-2">
+              {run.busy && !viewing && <Button size="sm" onClick={() => void run.cancel()}>Stop run</Button>}
               <Button size="sm" variant="secondary" className="ad-mono" onClick={() => setCollapsed(c => !c)} aria-pressed={collapsed}>
                 {collapsed ? <ChevronRightIcon size={14} /> : <ChevronDownIcon size={14} />} {collapsed ? "Expand" : "Collapse"}
               </Button>
