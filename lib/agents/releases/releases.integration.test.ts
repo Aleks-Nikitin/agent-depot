@@ -157,6 +157,8 @@ it("pins bounded conversations across edits, preserves graph history and seriali
   const servingRun = await db.agentRun.findFirstOrThrow({ where: { sessionId: serving.id } });
   expect(servingRun.source).toBe("serving");
   expect((await listRuns(ownerId)).runs.map(run => run.id)).toContain(servingRun.id);
+  const policy = (await import("@/lib/workspaces/policy")).WorkspacePolicySchema.parse((await db.workspace.findUniqueOrThrow({ where: { ownerId } })).policy);
+  await db.workspace.update({ where: { ownerId }, data: { policy: { ...policy, allowedTools: [...policy.allowedTools, "reviewed_write"] } } });
   const reviewed = await createAgent(ownerId, { ...input, enabledTools: ["reviewed_write"] }); agents.push(reviewed.id);
   const reviewedSession = await createConversation(ownerId, reviewed.id, "draft");
   const events: import("../contracts").RunStep[] = [];

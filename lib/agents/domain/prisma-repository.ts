@@ -5,6 +5,7 @@ import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
 import { products } from "@/lib/integrations/data/products";
 import type { DomainRepository } from "./repository";
 import { artifactHash } from "@/lib/agents/releases/fingerprint";
+import { lockedPolicy } from "@/lib/workspaces/policy";
 
 export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb()): DomainRepository {
   return Object.freeze({
@@ -19,6 +20,8 @@ export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb()
     },
     async createTicket(idempotencyKey: string, subject: string) {
       return db.$transaction(async tx => {
+        const policy = await lockedPolicy(tx, ownerId);
+        if (!policy.allowedTools.includes("create_ticket")) throw new Error("workspace_tool_denied");
         // Serialize identical keys; a receipt and its effect are one local commit.
         await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))`;
         const inputHash = artifactHash({ subject });

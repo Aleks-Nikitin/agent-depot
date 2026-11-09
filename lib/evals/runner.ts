@@ -18,6 +18,8 @@ import { TestSourceSchema } from "./schema";
 import type { Prisma } from "@/generated/prisma/client";
 import { evaluationOutcome, PROVIDER_FAILURES } from "./outcome";
 import type { TestCase, TestResult, TestRunReport } from "./types";
+import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
+import { workspaceCall } from "@/lib/workspaces/budget";
 
 export async function prepareEvaluation(ownerId: string, agentId: string, deps: RuntimeDependencies, transaction?: Prisma.TransactionClient) {
   const db = getDb();
@@ -26,6 +28,7 @@ export async function prepareEvaluation(ownerId: string, agentId: string, deps: 
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
     const config = AgentConfigSchema.parse(agent.config);
+    const workspacePolicy = await lockedPolicy(tx, ownerId, true); assertNarrowed(config, workspacePolicy);
     if (config.id !== agentId || config.ownerId !== ownerId || config.version !== agent.version) throw new Error("invalid_agent_config");
     const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (!rows.length || rows.length > 5) throw new HttpError(409, "suite_requires_one_to_five_tests");
@@ -36,9 +39,9 @@ export async function prepareEvaluation(ownerId: string, agentId: string, deps: 
     const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
       passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
     const knowledge = await evaluationKnowledge(tx, ownerId);
-    const manifest = buildEvaluationManifest({ config, cases, knowledge, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), registry: deps.registry });
+    const manifest = buildEvaluationManifest({ config, cases, knowledge, workspacePolicy, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), registry: deps.registry });
     await tx.evaluationManifest.create({ data: { testRunId: record.id, hash: manifest.hash, payload: manifest.payload } });
-    return { config, cases, record, knowledge, manifest };
+    return { config, cases, record, knowledge, manifest, workspacePolicy };
   };
   return transaction ? capture(transaction) : db.$transaction(capture);
 }
@@ -101,7 +104,8 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
           const reservation = deps.driver.estimate(Buffer.byteLength(JSON.stringify(gradingInput), "utf8") * 2 + 2048, 256);
           if (reservedOrSpent + reservation > 0.1) { checked.status = "error"; checked.failures.push("suite grader budget reached"); }
           else {
-            const grade = await grader(gradingInput, { signal: deadline, trackUsage: true });
+            const grade = await workspaceCall(ownerId, `grader:${record.id}:${testCase.id}`, "grader", Math.max(reservation, graderReservation),
+              () => grader(gradingInput, { signal: deadline, trackUsage: true }), result => result.estimatedCostUsd ?? null);
             reservedOrSpent += grade.estimatedCostUsd ?? reservation;
             if (grade.estimatedCostUsd == null) reservedOrSpent = 0.1;
             if (grade.unavailable) { checked.status = "error"; checked.outcome = "grader_unavailable"; checked.failures.push("grader unavailable"); }

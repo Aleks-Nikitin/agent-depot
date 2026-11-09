@@ -60,7 +60,7 @@ export async function getPublishStatus(ownerId: string, agentId: string, agentVe
   return readPublishStatus(getDb(), ownerId, agentId, agentVersion);
 }
 
-export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun" | "agentRun" | "evaluationManifest" | "knowledgeDocument">,
+export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun" | "agentRun" | "evaluationManifest" | "knowledgeDocument" | "workspace">,
   ownerId: string, agentId: string, agentVersion?: number): Promise<PublishStatus> {
   const agent = await db.agent.findFirst({ where: { id: agentId, ownerId }, select: { version: true } });
   if (!agent) throw new Error("agent_not_found");

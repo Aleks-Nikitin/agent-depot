@@ -12,8 +12,10 @@ import { runEvaluation } from "@/lib/evals/runner";
 import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { gradeAnswer } from "@/lib/evals/grader";
 import { testReportFromRecord } from "@/lib/evals/publish-gate";
+import { getWorkspacePolicy, WorkspacePolicySchema } from "@/lib/workspaces/policy";
 
 const evaluationSnapshot = z.object({ config: AgentConfigSchema, cases: z.array(TestCaseInputSchema.safeExtend({ id: z.string() }).strip()),
+  workspacePolicy: WorkspacePolicySchema.optional(),
   record: z.object({ id: z.string(), createdAt: z.coerce.date(), providerSettings: ProviderSettingsSchema }),
   knowledge: EvaluationFixturesSchema.shape.knowledge, manifest: z.object({ hash: z.string() }) });
 
@@ -82,12 +84,13 @@ export async function processExecutionJob(jobId: string, deps = runtimeServices(
     } else if (job.kind === "evaluation") {
       const snapshot = evaluationSnapshot.parse(job.payload);
       if (snapshot.config.ownerId !== job.ownerId || snapshot.config.id !== job.agentId || snapshot.record.id !== job.testRunId) throw new Error("job_snapshot_mismatch");
-      const manifest = buildEvaluationManifest({ ...snapshot, providerSettings: snapshot.record.providerSettings, registry: deps.registry });
+      const workspacePolicy = await getWorkspacePolicy(job.ownerId, true);
+      const manifest = buildEvaluationManifest({ ...snapshot, workspacePolicy, providerSettings: snapshot.record.providerSettings, registry: deps.registry });
       const saved = await db.evaluationManifest.findUniqueOrThrow({ where: { testRunId: job.testRunId! } });
       if (manifest.hash !== snapshot.manifest.hash || manifest.hash !== saved.hash || artifactHash(saved.payload) !== saved.hash) throw new Error("evaluation_dependencies_changed");
       const record = await db.testRun.findUniqueOrThrow({ where: { id: job.testRunId! } });
       if (record.status !== "running") throw new Error("evaluation_unavailable");
-      result = await runEvaluation(job.ownerId, job.agentId, signal, deps, grader, { ...snapshot, record, manifest });
+      result = await runEvaluation(job.ownerId, job.agentId, signal, deps, grader, { ...snapshot, workspacePolicy, record, manifest });
     } else throw new Error("invalid_job_kind");
     if (signal.aborted && job.testRunId) await db.testRun.updateMany({ where: { id: job.testRunId }, data: { status: "failed", passed: false } });
     await db.executionJob.update({ where: { id: jobId }, data: { status: cancellationRequested ? "cancelled" : signal.aborted ? "failed" : "completed",

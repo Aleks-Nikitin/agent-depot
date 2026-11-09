@@ -113,5 +113,10 @@ const reasons: Record<string, string> = {
   worker_interrupted: "Execution was interrupted. Review completed actions before starting a new request",
   worker_execution_unavailable: "Background execution is unavailable. Review the saved trace before trying again",
   cancellation_unavailable: "Could not request a stop. The run may still be active; reload its saved trace",
+  workspace_tool_denied: "This tool is outside your workspace's permitted tools",
+  workspace_limit_exceeded: "The agent's limits exceed the workspace policy. Narrow its settings before running",
+  workspace_budget_limit: "The workspace's daily estimated spend limit has been reached",
+  workspace_concurrency_limit: "The workspace is at its active run limit. Wait for a run to finish or stop it",
+  guest_execution_disabled: "Sign in with a registered account to use paid AI features",
 };
 export const describeReason = (code: string) => reasons[code] ?? code;

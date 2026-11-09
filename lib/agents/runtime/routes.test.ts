@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { supportAgent } from "../fixtures";
 
-const mocks = vi.hoisted(() => ({ loadAgent: vi.fn(), services: vi.fn(), run: vi.fn(), resume: vi.fn(), draft: vi.fn(), claim: vi.fn(), enqueueRun: vi.fn(), enqueueApproval: vi.fn() }));
+const mocks = vi.hoisted(() => ({ loadAgent: vi.fn(), services: vi.fn(), run: vi.fn(), resume: vi.fn(), draft: vi.fn(), claim: vi.fn(), enqueueRun: vi.fn(), enqueueApproval: vi.fn(), policy: vi.fn() }));
 vi.mock("./services", () => ({ loadAgent: mocks.loadAgent, runtimeServices: mocks.services }));
 vi.mock("./run-agent", () => ({ runAgent: mocks.run, resumeClaimedRun: mocks.resume }));
 vi.mock("./draft", async importOriginal => ({ ...(await importOriginal<typeof import("./draft")>()), draftAgent: mocks.draft }));
 vi.mock("@/lib/jobs/queue", () => ({ enqueueRun: mocks.enqueueRun, enqueueApproval: mocks.enqueueApproval }));
+vi.mock("@/lib/workspaces/policy", async original => ({ ...(await original<typeof import("@/lib/workspaces/policy")>()), getWorkspacePolicy: mocks.policy }));
 import { POST as execute } from "../../../app/api/agents/[id]/run/route";
 import { POST as approve } from "../../../app/api/approvals/[id]/route";
 import { POST as draft } from "../../../app/api/agents/draft/route";
@@ -14,6 +15,7 @@ beforeEach(() => {
   vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.resetAllMocks(); vi.stubEnv("RUNTIME_API_TOKEN", "a-long-demo-token-for-testing");
   mocks.loadAgent.mockResolvedValue(supportAgent);
+  mocks.policy.mockResolvedValue({ allowedTools: supportAgent.enabledTools });
   mocks.services.mockReturnValue({ store: { claimApproval: mocks.claim }, driver: {}, registry: new Map() });
 });
 afterEach(() => vi.unstubAllEnvs());

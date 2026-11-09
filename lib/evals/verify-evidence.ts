@@ -7,12 +7,15 @@ import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
 import { EvaluationManifestSchema, buildEvaluationManifest, evaluationKnowledge } from "./manifest";
 import { normalizedSnapshot, fixtureSnapshot } from "./state/check";
 import { StateEvidenceSchema, stateEvidence } from "./state/evidence";
+import { WorkspacePolicySchema, assertNarrowed } from "@/lib/workspaces/policy";
 
-export async function verifyOutcomeEvidence(db: Pick<Prisma.TransactionClient, "evaluationManifest" | "knowledgeDocument" | "agentRun">, config: ReturnType<typeof AgentConfigSchema.parse>, cases: { id: string }[], run: { id: string }, results: { testCaseId: string; response: string | null; runId: string | null; stateEvidence?: unknown }[]) {
+export async function verifyOutcomeEvidence(db: Pick<Prisma.TransactionClient, "evaluationManifest" | "knowledgeDocument" | "agentRun" | "workspace">, config: ReturnType<typeof AgentConfigSchema.parse>, cases: { id: string }[], run: { id: string }, results: { testCaseId: string; response: string | null; runId: string | null; stateEvidence?: unknown }[]) {
   try {
     const saved = await db.evaluationManifest.findUnique({ where: { testRunId: run.id } });
     if (!saved || !EvaluationManifestSchema.safeParse(saved.payload).success || artifactHash(saved.payload) !== saved.hash) return false;
-    const current = buildEvaluationManifest({ config, cases, providerSettings: captureProviderSettings(config), knowledge: await evaluationKnowledge(db, config.ownerId), registry: runtimeRegistry });
+    const workspacePolicy = WorkspacePolicySchema.parse((await db.workspace.findUniqueOrThrow({ where: { ownerId: config.ownerId } })).policy);
+    assertNarrowed(config, workspacePolicy);
+    const current = buildEvaluationManifest({ config, cases, workspacePolicy, providerSettings: captureProviderSettings(config), knowledge: await evaluationKnowledge(db, config.ownerId), registry: runtimeRegistry });
     if (current.hash !== saved.hash) return false;
     const ids = results.map(result => result.runId).filter((id): id is string => !!id);
     if (new Set(ids).size !== cases.length) return false;

@@ -121,6 +121,7 @@ model AgentDraft {
 }
 
 model AgentRun {
+  workspaceSlot WorkspaceSlot?
   id             String     @id @default(uuid())
   ownerId        String
   agentId        String
@@ -311,11 +312,47 @@ model LocalOperation {
 
 // One private container per owner; owner-scoped resources retain their existing IDs.
 model Workspace {
+  policy Json @default("{\"allowedTools\":[\"knowledge_search\",\"sales_lookup\",\"order_lookup\",\"create_ticket\",\"send_email\",\"google_shopping\",\"google_news\",\"read_webpage\"],\"dailyBudgetMicros\":1000000,\"maxConcurrentRuns\":4,\"limits\":{\"maxModelCalls\":10,\"maxWriteCalls\":5,\"maxToolCalls\":20,\"maxEstimatedCostUsd\":1,\"maxOutputTokens\":2048,\"timeoutMs\":120000}}")
+  slots WorkspaceSlot[]
+  days WorkspaceDay[]
   id        String   @id @default(uuid())
   ownerId   String   @unique
   name      String   @default("My workspace")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model WorkspaceSlot {
+  key String @id
+  ownerId String
+  runId String? @unique
+  active Boolean @default(true)
+  acquiredAt DateTime @default(now())
+  workspace Workspace @relation(fields: [ownerId], references: [ownerId], onDelete: Cascade)
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@index([ownerId, active])
+}
+
+model WorkspaceDay {
+  ownerId String
+  day String
+  heldMicros Int @default(0)
+  workspace Workspace @relation(fields: [ownerId], references: [ownerId], onDelete: Cascade)
+  charges WorkspaceCharge[]
+  @@id([ownerId, day])
+}
+
+model WorkspaceCharge {
+  key String @id
+  ownerId String
+  day String
+  kind String
+  reservedMicros Int
+  chargedMicros Int
+  status String @default("reserved")
+  createdAt DateTime @default(now())
+  bucket WorkspaceDay @relation(fields: [ownerId, day], references: [ownerId, day], onDelete: Cascade)
+  @@index([ownerId, day])
 }
 
 // Provider metadata only. Private prompts and tool payloads stay in checkpoints.

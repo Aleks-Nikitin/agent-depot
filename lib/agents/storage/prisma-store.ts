@@ -6,6 +6,8 @@ import { approvalHash } from "../runtime/approval-hash";
 import type { PrismaClient, Prisma } from "../../../generated/prisma/client";
 import { AgentConfigSchema, RunStepSchema, type AgentConfig, type EventInput, type RunStep } from "../contracts";
 import { CheckpointSchema, type Checkpoint, type PendingCall } from "../runtime/state";
+import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
+import { acquireSlot, reserveCharge, settleCharge } from "@/lib/workspaces/budget";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -30,6 +32,7 @@ export class PrismaRunStore {
 
   async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding, transaction?: Tx) {
     const create = async (tx: Tx) => {
+      const policy = await lockedPolicy(tx, config.ownerId, true); assertNarrowed(config, policy);
       const id = randomUUID();
       let turn: number | undefined;
       if (binding?.sessionId) {
@@ -43,11 +46,13 @@ export class PrismaRunStore {
           || binding.artifactHash !== artifactHash({ config, providerSettings: checkpoint.providerSettings })) throw new HttpError(409, "conversation_artifact_mismatch");
         turn = session.turnCount;
       }
-      return tx.agentRun.create({ data: {
+      const run = await tx.agentRun.create({ data: {
         id, ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
         agentVersion: config.version, source: checkpoint.approvalMode === "deny" || checkpoint.domainScope?.kind === "evaluation" ? "test" : binding?.releaseId ? "serving" : "playground",
         releaseId: binding?.releaseId, executionKey: binding?.executionKey, input: binding?.input, sessionId: binding?.sessionId, turn,
       } });
+      await acquireSlot(tx, config.ownerId, `run:${id}`, policy, id);
+      return run;
     };
     return transaction ? create(transaction) : this.db.$transaction(create);
   }
@@ -67,6 +72,11 @@ export class PrismaRunStore {
   }
   async reserveModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: AttemptReservation) {
     return this.db.$transaction(async tx => {
+      const policy = await lockedPolicy(tx, ownerId, true);
+      const run = await tx.agentRun.findFirstOrThrow({ where: { id: runId, ownerId } });
+      assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
+      await acquireSlot(tx, ownerId, `run:${runId}`, policy, runId);
+      await reserveCharge(tx, ownerId, `model:${runId}:${attempt.attempt}`, "model", attempt.reservedCostUsd, policy);
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { checkpoint: json(state), version: { increment: 1 } } });
       if (updated.count !== 1) throw new Error("stale_checkpoint");
@@ -76,12 +86,14 @@ export class PrismaRunStore {
   }
   async settleModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: number, result: AttemptSettlement) {
     return this.db.$transaction(async tx => {
+      await lockedPolicy(tx, ownerId);
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { checkpoint: json(state), version: { increment: 1 } } });
       if (updated.count !== 1) throw new Error("stale_checkpoint");
       const settled = await tx.modelAttempt.updateMany({ where: { runId, attempt, status: "reserved" },
         data: { ...result, durationMs: Math.ceil(result.durationMs), finishedAt: new Date() } });
       if (settled.count !== 1) throw new Error("attempt_unavailable");
+      await settleCharge(tx, ownerId, `model:${runId}:${attempt}`, result.estimatedCostUsd);
       return version + 1;
     });
   }
@@ -90,6 +102,7 @@ export class PrismaRunStore {
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { checkpoint: json(state), status: "waiting_approval", version: { increment: 1 } } });
       if (updated.count !== 1) throw new Error("stale_checkpoint");
+      await tx.workspaceSlot.updateMany({ where: { runId, ownerId }, data: { active: false } });
       const approval = await tx.approval.create({ data: { runId, ...call, input: json(call.input), inputHash: approvalHash(ownerId, runId, call), expiresAt: new Date(Date.now() + 15 * 60_000) } });
       const event = await insertEvent(tx, runId, ownerId, { type: "approval_required", payload: {
         ...call, approvalId: approval.id, expiresAt: approval.expiresAt.toISOString(),
@@ -104,6 +117,9 @@ export class PrismaRunStore {
       if (approval.status !== "pending" || approval.expiresAt.getTime() <= Date.now()) throw new Error("approval_unavailable");
       const run = await tx.agentRun.findFirstOrThrow({ where: { id: approval.runId, ownerId } });
       const state = CheckpointSchema.parse(run.checkpoint);
+      const policy = await lockedPolicy(tx, ownerId, true);
+      assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
+      await acquireSlot(tx, ownerId, `run:${run.id}`, policy, run.id);
       const call = { toolCallId: approval.toolCallId, toolId: approval.toolId, input: approval.input };
       if (!approval.inputHash || approval.inputHash !== approvalHash(ownerId, run.id, call)
         || !state.pending[0] || approvalHash(ownerId, run.id, state.pending[0]) !== approval.inputHash) {
@@ -130,6 +146,7 @@ export class PrismaRunStore {
       const result = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { status, response, stopReason, checkpoint: json(state), finishedAt, version: { increment: 1 } } });
       if (result.count !== 1) throw new Error("stale_checkpoint");
+      await tx.workspaceSlot.updateMany({ where: { runId, ownerId }, data: { active: false } });
       const run = await tx.agentRun.findUniqueOrThrow({ where: { id: runId } });
       if (run.sessionId) await tx.conversationSession.updateMany({ where: { id: run.sessionId, ownerId, activeRunId: runId }, data: { activeRunId: null } });
       const config = AgentConfigSchema.parse(run.configSnapshot);

@@ -39,13 +39,23 @@ export async function modelWithRecovery(options: {
     const identity = active.identity ?? { profile: active.key, provider: "custom", model: active.key };
     state.activeModel = identity.model; state.activeProfile = identity.profile;
     await options.reserve({ attempt, modelStep: state.modelSteps, ...identity, reservedCostUsd: reserved });
-    await emit({ type: "model_started", payload: { step: attempt, ...identity } });
     const started = Date.now();
+    let invoked = false;
     let response: Awaited<ReturnType<typeof options.invoke>>;
     try {
+      await emit({ type: "model_started", payload: { step: attempt, ...identity } });
+      signal.throwIfAborted();
+      invoked = true;
       response = await withCancellation(signal, () => options.invoke(active));
       signal.throwIfAborted();
     } catch (error) {
+      if (!invoked) {
+        // Cancellation/delivery failed before the provider request: this cost is known to be zero.
+        state.budgetSpentUsd = spent; state.usage = previous;
+        await options.settle(attempt, { status: "failed", inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0,
+          reason: "attempt_not_started", durationMs: Date.now() - started });
+        throw error;
+      }
       const reason = signal.aborted ? "interrupted_or_timeout" : modelFailureReason(error);
       await options.settle(attempt, { status: "failed", inputTokens: null, outputTokens: null,
         estimatedCostUsd: null, reason, durationMs: Date.now() - started });

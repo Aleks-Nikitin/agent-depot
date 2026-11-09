@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { afterAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getDb } from "../../db/prisma";
 import { supportAgent, salesAgent } from "../fixtures";
@@ -13,8 +13,16 @@ import type { AgentConfig, RunStep } from "../contracts";
 const db = getDb();
 const store = new PrismaRunStore(db);
 const created: string[] = [];
+let originalWorkspacePolicy: import("@/generated/prisma/client").Prisma.JsonValue;
+beforeAll(async () => {
+  const { ensureWorkspace } = await import("../workspace");
+  const row = await ensureWorkspace(db, "demo"); originalWorkspacePolicy = row.policy;
+  const policy = (await import("@/lib/workspaces/policy")).WorkspacePolicySchema.parse(row.policy);
+  await db.workspace.update({ where: { ownerId: "demo" }, data: { policy: { ...policy, allowedTools: [...policy.allowedTools, "second_write"] } } });
+});
 afterAll(async () => {
   await db.agentRun.deleteMany({ where: { id: { in: created } } });
+  await db.workspace.update({ where: { ownerId: "demo" }, data: { policy: originalWorkspacePolicy! } });
   await db.$disconnect();
 });
 function answer(text = "Fixture answer"): ModelTurn {
@@ -134,7 +142,8 @@ it("records a conservative reservation when a provider hangs or fails", async ()
   for (const hanging of [false, true]) {
     const model: ModelDriver = { key: "test", estimate: (i, o) => (i + o) / 1_000_000,
       turn: vi.fn(async () => { if (hanging) return new Promise<ModelTurn>(() => {}); throw new Error("provider-secret-must-not-leak"); }) };
-    const { result, events } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 250 } }, model);
+    const { result, events } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 1000 } }, model);
+    expect(model.turn).toHaveBeenCalledOnce();
     expect(result.status).toBe("failed");
     expect(result.usage.estimatedCostUsd).toBeNull();
     expect((await store.loadRun(result.runId, "demo")).state.budgetSpentUsd).toBeGreaterThan(0);

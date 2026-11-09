@@ -26,6 +26,10 @@ The Evaluation Lab now shows distinct behavior/provider/grader outcomes and visu
 
 Run, approval and evaluation endpoints enqueue durable work for a standalone Graphile Worker process. Browser viewers reconnect to persisted event sequences and can explicitly request a stop. See [worker setup, 202 receipt contracts, cancellation, local effect receipts and interruption limits](background-execution.md). Earlier request-owned streaming descriptions are superseded for these endpoints.
 
+## Workspace limits
+
+Shared PostgreSQL reservations now enforce daily estimated model spend and admitted run concurrency across workers. Saved and executing agent configurations must fit the parent workspace tool/limit policy; production guests cannot start paid AI work. See [defaults, UTC accounting, policy changes and verification boundaries](workspace-policy.md).
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.

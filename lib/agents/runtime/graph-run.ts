@@ -18,6 +18,7 @@ import { createAgent, createMiddleware, MiddlewareError, ToolInvocationError, to
 import { Command, interrupt } from "@langchain/langgraph";
 import { z } from "zod";
 import { withoutPayloadTracing, traceRunMetadata } from "./tracing";
+import { assertWorkspaceConfig, WORKSPACE_BLOCKS } from "@/lib/workspaces/policy";
 import { nativeModelTurn } from "./provider-model";
 import type { RuntimeDependencies } from "./run-agent";
 
@@ -91,6 +92,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
     while (inFlight.size) await Promise.allSettled([...inFlight]);
   }
   try {
+    await assertWorkspaceConfig(config);
     if (openingEvent === "run_started") await emit({ type: "run_started", payload: { agentId: config.id } });
     else if (openingEvent) await deliver(openingEvent);
     guard(deps.domain?.scope.ownerId === ownerId, "domain_owner_mismatch");
@@ -158,6 +160,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
         if (Object.hasOwn(state.toolResults!, id)) return new ToolMessage({ tool_call_id: id, content: JSON.stringify(state.toolResults![id]) });
         const current = state.pending.find(call => call.toolCallId === id);
         guard(!!current, "approval_call_mismatch");
+        await assertWorkspaceConfig(config);
         const selected = permittedTool(config, deps.registry, current.toolId);
         const denied = selected.kind === "write" && (state.approvalMode === "deny" || (state.domainScope?.kind === "evaluation" && !selected.domainScoped));
         if (selected.retired && !denied) throw new ExecutionFailure("email_removed");
@@ -269,6 +272,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       else break;
     }
     if (error instanceof EventDeliveryError) return finish("failed", null, "event_delivery_failed");
+    if (error instanceof Error && WORKSPACE_BLOCKS.has(error.message)) return finish("blocked", null, error.message);
     if (error instanceof PolicyBlock) return finish("blocked", null, error.message);
     if (signal.aborted) return finish("failed", null, "interrupted_or_timeout");
     if (error instanceof ExecutionFailure) return finish("failed", null, error.message);

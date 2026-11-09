@@ -118,6 +118,8 @@ it("runs actual write tools inside evaluations and tears down on success, failur
     const expiredScope = await createIsolatedAttempt({ ownerId, suiteId: "scope-it", caseId: "expired", fixtures: { knowledge: await liveDomainRepository(ownerId).knowledge() } });
     await expiredScope.dispose();
     await expect(runAgent({ config: { ...supportAgent, ownerId }, ownerId, message: "No live fallback" }, { ...deps, domain: expiredScope.repository })).rejects.toThrow("evaluation_scope_unavailable");
+    const policy = (await import("@/lib/workspaces/policy")).WorkspacePolicySchema.parse((await db.workspace.findUniqueOrThrow({ where: { ownerId } })).policy);
+    await db.workspace.update({ where: { ownerId }, data: { policy: { ...policy, allowedTools: [...policy.allowedTools, "reviewed_fixture"] } } });
     const pausedScope = await createIsolatedAttempt({ ownerId, suiteId: "scope-it", caseId: "paused", fixtures: { knowledge: await liveDomainRepository(ownerId).knowledge() } });
     let writes = 0;
     const registry = createRegistry([{ id: "reviewed_fixture", description: "Reviewed test write", kind: "write", domainScoped: true,

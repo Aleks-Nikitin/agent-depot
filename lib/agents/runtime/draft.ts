@@ -5,6 +5,8 @@ import { DraftSchema, type AgentDraft, type Usage } from "../contracts";
 import type { ToolRegistry } from "../tools/registry";
 import { createGoogleDriver, googleThinkingConfig, googleUsage } from "./model";
 import { withCancellation } from "./cancellation";
+import { randomUUID } from "node:crypto";
+import { workspaceCall } from "@/lib/workspaces/budget";
 
 export const DraftRequestSchema = z.object({ goal: z.string().trim().min(1).max(4000) }).strict();
 export type DraftGenerator = (goal: string, catalog: { id: string; description: string; kind: "read" | "write" }[], signal: AbortSignal) => Promise<{ draft: unknown; usage: Usage }>;
@@ -43,3 +45,14 @@ export const googleDraftGenerator: DraftGenerator = async (goal, catalog, signal
   if (result.finishReason !== "stop") throw new Error("draft_model_incomplete");
   return { draft: result.output, usage: { inputTokens, outputTokens, estimatedCostUsd } };
 };
+
+export function budgetedGoogleDraftGenerator(ownerId: string): DraftGenerator {
+  return async (goal, catalog, signal) => {
+    const driver = createGoogleDriver();
+    const reserved = driver.estimate(Buffer.byteLength(JSON.stringify({ goal, availableTools: catalog })) + 4096, 2048);
+    if (reserved > 0.05) throw new Error("draft_budget_limit");
+    signal.throwIfAborted();
+    return workspaceCall(ownerId, `draft:${randomUUID()}`, "draft", reserved,
+      () => googleDraftGenerator(goal, catalog, signal), result => result.usage.estimatedCostUsd);
+  };
+}

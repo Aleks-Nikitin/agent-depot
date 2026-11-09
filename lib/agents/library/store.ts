@@ -6,6 +6,7 @@ import { getDb } from "@/lib/db/prisma";
 import { AgentConfigSchema, type AgentConfig } from "@/lib/agents/contracts";
 import { AgentInputSchema, type AgentInput } from "./schema";
 import { promoteRelease } from "../releases/promote";
+import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
 
 export type AgentSummary = {
   id: string;
@@ -125,6 +126,7 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
   const db = getDb();
   await db.$transaction(async (tx) => {
     await ensureWorkspace(tx, ownerId);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.create({
       data: { id, ownerId, name: input.name, version: 1, config },
     });
@@ -150,6 +152,7 @@ export async function updateAgent(
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
     const config = buildConfig(id, ownerId, nextVersion, input);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
       data: { name: input.name, version: nextVersion, config },
@@ -181,6 +184,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
   });
   await db.$transaction(async (tx) => {
     await ensureWorkspace(tx, ownerId);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
     await tx.agentDraft.create({
       data: { agentId: newId, version: 1, name, config },
@@ -223,6 +227,7 @@ export async function rollbackAgent(
       requireWriteApproval: targetConfig.requireWriteApproval,
       workspaceName: targetConfig.workspaceName,
     });
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
       data: { name: target.name, version: nextVersion, config },
