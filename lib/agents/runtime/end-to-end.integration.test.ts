@@ -4,14 +4,17 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getDb } from "../../db/prisma";
 import { supportAgent, salesAgent } from "../fixtures";
-import { RunStepSchema, type AgentConfig, type RunStep } from "../contracts";
+import { type AgentConfig } from "../contracts";
 import { PrismaRunStore } from "../storage/prisma-store";
 import { createAgent, updateAgent, rollbackAgent } from "../library/store";
 import { POST as execute } from "../../../app/api/agents/[id]/run/route";
+import { processExecutionJob } from "@/lib/jobs/worker";
 import { POST as decide } from "../../../app/api/approvals/[id]/route";
 
 const db = getDb();
 const runIds: string[] = [];
+const jobIds: string[] = [];
+const cursors = new Map<string, number>();
 const agentIds: string[] = [];
 beforeEach(() => {
   // Exercise the generic review/resume protocol using a test-only reviewed
@@ -20,6 +23,8 @@ beforeEach(() => {
   vi.spyOn(runtimeRegistry, "get").mockImplementation(id => {
     const tool = lookup(id); return tool?.id === "create_ticket" ? { ...tool, approvalExempt: false } : tool;
   });
+  vi.stubEnv("RUNTIME_MODEL_MAX_RETRIES", "0");
+  vi.stubEnv("RUNTIME_FALLBACK_PROFILE", "");
   vi.stubEnv("RUNTIME_ALLOW_DEMO_TOKEN", "true");
   vi.stubEnv("RUNTIME_API_TOKEN", "end-to-end-test-token-not-a-secret");
   vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "test-key-not-real");
@@ -30,6 +35,10 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals(); vi.unstubAllEnvs();
+  for (const jobId of jobIds.splice(0)) {
+    await db.$queryRaw`SELECT (graphile_worker.remove_job(${jobId})).id::text AS id`;
+    await db.executionJob.deleteMany({ where: { id: jobId } });
+  }
   for (const runId of runIds.splice(0)) {
     await db.demoTicket.deleteMany({ where: { idempotencyKey: { startsWith: `${runId}:` } } });
     await db.agentRun.deleteMany({ where: { id: runId } });
@@ -44,7 +53,7 @@ async function agent(config: AgentConfig) {
 }
 function request(body: unknown, signal?: AbortSignal) {
   return new Request("http://localhost/api/test", { method: "POST", headers: {
-    authorization: "Bearer end-to-end-test-token-not-a-secret", "content-type": "application/json",
+    authorization: "Bearer end-to-end-test-token-not-a-secret", "content-type": "application/json", "Idempotency-Key": randomUUID(),
   }, body: JSON.stringify(body), signal });
 }
 function providerScript(parts: unknown[][]) {
@@ -56,25 +65,13 @@ function providerScript(parts: unknown[][]) {
   }));
 }
 async function readEvents(response: Response) {
-  expect(response.status).toBe(200);
-  const events: RunStep[] = [];
-  const reader = response.body!.getReader();
-  let buffer = "";
-  const decoder = new TextDecoder();
-  try {
-    while (true) {
-      const { value, done } = await reader.read(); if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const event = RunStepSchema.parse(JSON.parse(buffer.slice(0, newline)));
-        if (!runIds.includes(event.runId)) runIds.push(event.runId);
-        events.push(event); buffer = buffer.slice(newline + 1);
-      }
-    }
-  } finally { reader.releaseLock(); }
-  expect(buffer).toBe("");
-  return events;
+  expect(response.status).toBe(202);
+  const receipt = await response.json() as { jobId: string; runId: string };
+  jobIds.push(receipt.jobId); if (!runIds.includes(receipt.runId)) runIds.push(receipt.runId);
+  await processExecutionJob(receipt.jobId);
+  const history = await new PrismaRunStore(db).history(receipt.runId, "demo", cursors.get(receipt.runId) ?? 0);
+  cursors.set(receipt.runId, history.events.at(-1)?.sequence ?? 0);
+  return history.events;
 }
 it("runs two stored configurations through their distinct real demo tools", async () => {
   for (const [config, toolId] of [[supportAgent, "knowledge_search"], [salesAgent, "sales_lookup"]] as const) {
@@ -102,11 +99,11 @@ it("pauses a real demo write and resumes through the approval HTTP handler exact
   expect(resumed[0].sequence).toBe(waiting.sequence + 1);
   expect(new Set([...events, ...resumed].map(e => e.runId))).toEqual(new Set([runId]));
   expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(1);
-  expect((await decide(request({ approved: true }), context)).status).toBe(409);
+  expect((await decide(request({ approved: true }), context)).status).toBe(202);
 });
-it("settles a claimed approval when the client disconnects during the claim", async () => {
+it("continues a durably queued approval after the browser disconnects during its claim", async () => {
   const saved = await agent(supportAgent);
-  providerScript([[{ functionCall: { name: "create_ticket", args: { subject: "Disconnected approval" } } }]]);
+  providerScript([[{ functionCall: { name: "create_ticket", args: { subject: "Disconnected approval" } } }], [{ text: "Ticket created after disconnect." }]]);
   const events = await readEvents(await execute(request({ message: "create ticket" }), { params: Promise.resolve({ id: saved.id }) }));
   const waiting = events.at(-1)!;
   if (waiting.type !== "approval_required") throw new Error("expected approval wait");
@@ -120,16 +117,15 @@ it("settles a claimed approval when the client disconnects during the claim", as
   });
   const context = { params: Promise.resolve({ id: waiting.payload.approvalId }) };
   const response = await decide(request({ approved: true }, controller.signal), context);
-  // Draining waits for cancellation cleanup even though the disconnected client
-  // cannot receive an approval-resolution notification.
-  await response.text().catch(() => {});
+  // The durable worker is independent of the disconnected response reader.
+  await readEvents(response);
   const history = await new PrismaRunStore(db).history(runId, "demo");
-  expect(history.status).toBe("failed");
-  expect(history.stopReason).toBe("interrupted_or_timeout");
-  expect(history.events.at(-1)?.type).toBe("run_failed");
-  expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(0);
-  expect(fetch).toHaveBeenCalledOnce();
-  expect((await decide(request({ approved: true }), context)).status).toBe(409);
+  expect(history.status).toBe("completed");
+  expect(history.stopReason).toBeNull();
+  expect(history.events.at(-1)?.type).toBe("run_completed");
+  expect(await db.demoTicket.count({ where: { idempotencyKey: { startsWith: `${runId}:` } } })).toBe(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect((await decide(request({ approved: true }), context)).status).toBe(202);
 });
 it("runs builder-created versions and resumes the original snapshot across edits and rollback", async () => {
   const original = await createAgent("demo", {

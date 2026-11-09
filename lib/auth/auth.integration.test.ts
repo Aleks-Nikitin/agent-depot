@@ -1,3 +1,5 @@
+import { processExecutionJob } from "@/lib/jobs/worker";
+import { PrismaRunStore } from "@/lib/agents/storage/prisma-store";
 import { runtimeRegistry } from "@/lib/integrations/runtime-tools";
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
@@ -18,18 +20,24 @@ const origin = "http://localhost:3000";
 const password = `Test-${randomUUID()}-password`;
 const users: { id: string; email: string; cookie: string }[] = [];
 const runIds: string[] = [];
+const jobIds: string[] = [];
+const cursors = new Map<string, number>();
 const verificationIdentifiers: string[] = [];
 let agentId: string;
 function request(path: string, method = "GET", body?: unknown, cookie = "") {
-  return new Request(origin + path, { method, headers: { origin, cookie, "content-type": "application/json" },
+  return new Request(origin + path, { method, headers: { origin, cookie, "content-type": "application/json", "Idempotency-Key": randomUUID() },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 }
 function cookies(response: Response) { return response.headers.getSetCookie().map(cookie => cookie.split(";")[0]).join("; "); }
 async function events(response: Response) {
-  expect(response.status).toBe(200);
-  const result = (await response.text()).trim().split("\n").map(line => JSON.parse(line));
-  if (result[0]?.runId) runIds.push(result[0].runId);
-  return result;
+  expect(response.status).toBe(202);
+  const receipt = await response.json() as { jobId: string; runId: string };
+  jobIds.push(receipt.jobId); if (!runIds.includes(receipt.runId)) runIds.push(receipt.runId);
+  await processExecutionJob(receipt.jobId);
+  const run = await db.agentRun.findUniqueOrThrow({ where: { id: receipt.runId } });
+  const history = await new PrismaRunStore(db).history(run.id, run.ownerId, cursors.get(run.id) ?? 0);
+  cursors.set(run.id, history.events.at(-1)?.sequence ?? 0);
+  return history.events;
 }
 // Keep authorization/approval tests focused on a generic reviewed writer.
 beforeEach(() => {
@@ -58,6 +66,10 @@ beforeAll(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 afterAll(async () => {
   const ids = users.map(user => user.id);
+  for (const jobId of jobIds) {
+    await db.$queryRaw`SELECT (graphile_worker.remove_job(${jobId})).id::text AS id`;
+    await db.executionJob.deleteMany({ where: { id: jobId } });
+  }
   await db.demoTicket.deleteMany({ where: { ownerId: { in: ids } } });
   await db.agentRun.deleteMany({ where: { id: { in: runIds } } });
   await db.agent.deleteMany({ where: { ownerId: { in: ids } } });
@@ -119,12 +131,12 @@ it("uses the real session for execution, approval ownership and metrics without 
   expect(fetch).not.toHaveBeenCalled();
   const waiting = await events(await execute(request(`/api/agents/${agentId}/run`, "POST", { message: "create ticket" }, users[0].cookie), context));
   const approval = waiting.at(-1);
-  expect(approval.type).toBe("approval_required");
+  if (approval?.type !== "approval_required") throw new Error("expected approval wait");
   const decisionContext = { params: Promise.resolve({ id: approval.payload.approvalId }) };
   expect((await approve(request("/api/approvals/test", "POST", { approved: true }, users[1].cookie), decisionContext)).status).toBe(404);
   expect(await db.demoTicket.count({ where: { ownerId: users[0].id } })).toBe(0);
   const finished = await events(await approve(request("/api/approvals/test", "POST", { approved: true }, users[0].cookie), decisionContext));
-  expect(finished.at(-1).type).toBe("run_completed");
+  expect(finished.at(-1)?.type).toBe("run_completed");
   expect(await db.demoTicket.count({ where: { ownerId: users[0].id } })).toBe(1);
   const metric = await db.runtimeMetric.findFirstOrThrow({ where: { runId: waiting[0].runId } });
   const from = new Date(Math.floor(metric.finishedAt.getTime() / 3_600_000) * 3_600_000);
@@ -183,7 +195,7 @@ it("completes a simulated GitHub callback with verified email, encrypted provide
   expect((await list(request("/api/agents", "GET", undefined, cookies(callback)))).status).toBe(200);
 });
 
-it("gives each guest a separate session and full agent CRUD/runtime access without inheriting demo data", async () => {
+it("gives each development guest a separate session and owned CRUD/runtime access without inheriting demo data", async () => {
   const guests = [];
   for (let index = 0; index < 2; index++) {
     const response = await getAuth().handler(request("/api/auth/sign-in/anonymous", "POST", {}));
@@ -205,6 +217,6 @@ it("gives each guest a separate session and full agent CRUD/runtime access witho
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ candidates: [{ content: { role: "model", parts: [{ text: "Guest answer" }] }, finishReason: "STOP" }],
     usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 6, totalTokenCount: 18 } })));
   const finished = await events(await execute(request(`/api/agents/${agent.id}/run`, "POST", { message: "Hello" }, guests[0].cookie), context));
-  expect(finished.at(-1).type).toBe("run_completed");
+  expect(finished.at(-1)?.type).toBe("run_completed");
   expect((await remove(request(`/api/agents/${agent.id}`, "DELETE", undefined, guests[0].cookie), context)).status).toBe(204);
 });
