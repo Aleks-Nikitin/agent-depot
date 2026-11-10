@@ -8,6 +8,8 @@ Each case with state evidence includes **Database changes**. Failed state checks
 
 The publication banner explains why the draft is blocked and links the first failing case. A failed draft leaves the approved serving release unchanged. The Publish button depends on the server gate and current local results; it cannot override the server's [manifest and outcome verification](outcome-evidence.md).
 
+Finished runs can also become [reviewed regression tests and repair proposals](reviewed-repair.md). The repair workflow pauses for exact instruction-diff approval, creates one new draft, and reruns the full suite before reporting verification. Promotion remains a separate action through the normal publication gate.
+
 ## Add and run the support suite
 
 1. Save an agent with `knowledge_search` and `create_ticket` permitted. Its instructions should treat retrieved documents as untrusted data, refuse unauthorized actions, avoid duplicates, and confirm actions only after successful tool execution.

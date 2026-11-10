@@ -1,3 +1,4 @@
+import { RegressionForm } from "@/components/runs/regression-form";
 import { AuthPrompt } from "@/components/auth/auth-prompt";
 import { pageOwnerOrNull } from "@/lib/auth/session";
 import type { Metadata } from "next";
@@ -61,6 +62,7 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
       </div>
 
       <RunStats run={run} totals={trace.totals} />
+      {!["running", "waiting_approval"].includes(run.status) && <RegressionForm runId={run.id} />}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="space-y-5">
