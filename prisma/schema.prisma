@@ -240,6 +240,7 @@ model RecordedEmail {
 
 // NEW
 model TestCase {
+  regressionOrigin RegressionOrigin?
   fixtures Json @default("{}")
   stateAssertions Json @default("[]")
   id          String   @id @default(uuid())
@@ -431,4 +432,18 @@ model EvaluationManifest {
   payload Json
   createdAt DateTime @default(now())
   testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+}
+
+// Reviewed reproduction provenance. Runtime checkpoints are deliberately excluded.
+model RegressionOrigin {
+  id String @id @default(uuid())
+  ownerId String
+  runId String @unique
+  testCaseId String @unique
+  sourceHash String
+  definitionHash String
+  evidence Json
+  createdAt DateTime @default(now())
+  testCase TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  @@index([ownerId])
 }
