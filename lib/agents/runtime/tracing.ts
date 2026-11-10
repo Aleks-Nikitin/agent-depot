@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Client } from "langsmith";
 import { RunTree } from "langsmith/run_trees";
 import { withRunTree } from "langsmith/traceable";
@@ -12,7 +13,15 @@ const privateClient = new Client({ apiKey: "tracing-disabled", hideInputs: true,
 export function withoutPayloadTracing<T>(fn: () => Promise<T>) {
   return withRunTree(new RunTree({ name: "private-execution", run_type: "chain", inputs: {}, client: privateClient, tracingEnabled: false }), fn);
 }
-export async function traceRunMetadata(result: AgentRunResult, started: number) {
+export function traceRunMetadata(result: AgentRunResult, started: number) {
+  return sendMetadata(result.runId, "agent-execution", { status: result.status, inputTokens: result.usage.inputTokens,
+    outputTokens: result.usage.outputTokens, estimatedCostUsd: result.usage.estimatedCostUsd }, started);
+}
+export function traceRepairMetadata(caseId: string, status: string, childJobId: string | null, appliedVersion: number | null, suiteCount: number, started: number) {
+  const node = status === "review" ? "interrupt_for_human_review" : status === "evaluating" ? "await_evaluation" : "report";
+  return sendMetadata(randomUUID(), "repair-step", { caseId, graphVersion: 1, node, status, childJobId, appliedVersion, suiteCount }, started);
+}
+async function sendMetadata(id: string, name: string, metadata: Record<string, string | number | null>, started: number) {
   const key = process.env.LANGSMITH_API_KEY ?? process.env.LANGCHAIN_API_KEY;
   if (process.env.LANGCHAIN_TRACING_V2 !== "true" || !key) return;
   try {
@@ -23,11 +32,10 @@ export async function traceRunMetadata(result: AgentRunResult, started: number) 
     await fetch(new URL("runs", endpoint.href.endsWith("/") ? endpoint : `${endpoint.href}/`), {
       method: "POST", headers: { "content-type": "application/json", "x-api-key": key },
       signal: AbortSignal.timeout(500),
-      body: JSON.stringify({ id: result.runId, name: "agent-execution", run_type: "chain", inputs: {}, outputs: {},
+      body: JSON.stringify({ id, name, run_type: "chain", inputs: {}, outputs: {},
         start_time: new Date(started).toISOString(), end_time: new Date().toISOString(),
         session_name: process.env.LANGSMITH_PROJECT ?? process.env.LANGCHAIN_PROJECT ?? "default",
-        extra: { metadata: { status: result.status, inputTokens: result.usage.inputTokens,
-          outputTokens: result.usage.outputTokens, estimatedCostUsd: result.usage.estimatedCostUsd } },
+        extra: { metadata },
       }),
     });
   } catch { /* Optional telemetry never supplies execution evidence. */ }

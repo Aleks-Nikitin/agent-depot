@@ -101,6 +101,7 @@ model Agent {
   servingReleaseId String?
   servingGeneration Int @default(0)
   servingRelease   AgentRelease? @relation("ServingRelease", fields: [servingReleaseId], references: [id], onDelete: SetNull)
+  repairCases      RepairCase[]
   testCases        TestCase[]     // NEW
 
   @@index([ownerId])
@@ -446,4 +447,35 @@ model RegressionOrigin {
   createdAt DateTime @default(now())
   testCase TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
   @@index([ownerId])
+}
+
+// Application review/operation receipts; graph checkpoints use a separate vendor schema.
+model RepairCase {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  sourceRunId String
+  testCaseId String
+  requestKey String @unique
+  graphVersion Int @default(1)
+  status String @default("queued")
+  baseVersion Int
+  baseHash String
+  manifestHash String
+  targetManifestHash String
+  testsFingerprint String
+  proposalHash String
+  payload Json
+  expiresAt DateTime
+  approved Boolean?
+  reviewerId String?
+  decidedAt DateTime?
+  appliedVersion Int?
+  childJobId String? @unique
+  childJobIds String[] @default([])
+  reason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, createdAt])
 }

@@ -61,9 +61,10 @@ export async function enqueueRun(ownerId: string, agentId: string, message: stri
   });
 }
 
-export async function enqueueEvaluation(ownerId: string, agentId: string, key: string, deps = runtimeServices() as RuntimeDependencies) {
-  return enqueue(ownerId, agentId, `evaluation:${agentId}`, key, {}, "evaluation", async (tx, id) => {
+export async function enqueueEvaluation(ownerId: string, agentId: string, key: string, deps = runtimeServices() as RuntimeDependencies, expected?: { version: number; manifestHash: string }) {
+  return enqueue(ownerId, agentId, `evaluation:${agentId}`, key, expected ?? {}, "evaluation", async (tx, id) => {
     const snapshot = await prepareEvaluation(ownerId, agentId, deps, tx);
+    if (expected && (snapshot.config.version !== expected.version || snapshot.manifest.hash !== expected.manifestHash)) throw new HttpError(409, "repair_evaluation_changed");
     await tx.testRun.update({ where: { id: snapshot.record.id }, data: { jobId: id } });
     return { testRunId: snapshot.record.id, payload: json(snapshot) };
   });
