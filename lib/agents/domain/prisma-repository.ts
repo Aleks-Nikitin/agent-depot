@@ -6,8 +6,10 @@ import { products } from "@/lib/integrations/data/products";
 import type { DomainRepository } from "./repository";
 import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { lockedPolicy } from "@/lib/workspaces/policy";
+import { assertNarrowed } from "@/lib/workspaces/policy";
+import type { AgentConfig } from "@/lib/agents/contracts";
 
-export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb(), agentId?: string): DomainRepository {
+export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb(), agentId?: string, config?: AgentConfig): DomainRepository {
   return Object.freeze({
     scope: Object.freeze({ kind: "live" as const, ownerId }),
     async knowledge() {
@@ -19,7 +21,8 @@ export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb()
     },
     async createTicket(idempotencyKey: string, subject: string) {
       return db.$transaction(async tx => {
-        const policy = await lockedPolicy(tx, ownerId);
+        const policy = await lockedPolicy(tx, ownerId, false, config);
+        if (config) assertNarrowed(config, policy);
         if (!policy.allowedTools.includes("create_ticket")) throw new Error("workspace_tool_denied");
         // Serialize identical keys; a receipt and its effect are one local commit.
         await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))`;

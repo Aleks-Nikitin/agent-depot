@@ -32,7 +32,7 @@ export class PrismaRunStore {
 
   async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding, transaction?: Tx) {
     const create = async (tx: Tx) => {
-      const policy = await lockedPolicy(tx, config.ownerId, true); assertNarrowed(config, policy);
+      const policy = await lockedPolicy(tx, config.ownerId, true, config); assertNarrowed(config, policy);
       const id = randomUUID();
       let turn: number | undefined;
       if (binding?.sessionId) {
@@ -72,9 +72,10 @@ export class PrismaRunStore {
   }
   async reserveModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: AttemptReservation) {
     return this.db.$transaction(async tx => {
-      const policy = await lockedPolicy(tx, ownerId, true);
       const run = await tx.agentRun.findFirstOrThrow({ where: { id: runId, ownerId } });
+      const policy = await lockedPolicy(tx, ownerId, true, AgentConfigSchema.parse(run.configSnapshot));
       assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
+      if (policy.governance && !policy.governance.allowedProfiles.includes(attempt.profile as "gemini-primary" | "openai-fallback")) throw new HttpError(403, "governance_policy_denied");
       await acquireSlot(tx, ownerId, `run:${runId}`, policy, runId);
       await reserveCharge(tx, ownerId, `model:${runId}:${attempt.attempt}`, "model", attempt.reservedCostUsd, policy);
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
@@ -117,7 +118,7 @@ export class PrismaRunStore {
       if (approval.status !== "pending" || approval.expiresAt.getTime() <= Date.now()) throw new Error("approval_unavailable");
       const run = await tx.agentRun.findFirstOrThrow({ where: { id: approval.runId, ownerId } });
       const state = CheckpointSchema.parse(run.checkpoint);
-      const policy = await lockedPolicy(tx, ownerId, true);
+      const policy = await lockedPolicy(tx, ownerId, true, AgentConfigSchema.parse(run.configSnapshot));
       assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
       await acquireSlot(tx, ownerId, `run:${run.id}`, policy, run.id);
       const call = { toolCallId: approval.toolCallId, toolId: approval.toolId, input: approval.input };

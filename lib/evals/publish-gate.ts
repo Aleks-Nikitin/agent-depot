@@ -9,6 +9,7 @@ import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { captureProviderSettings } from "@/lib/agents/releases/provider-settings";
 import { AgentConfigSchema } from "@/lib/agents/contracts";
 import { testFingerprint } from "./fingerprint";
+import type { GovernanceReader } from "@/lib/governance/policy";
 
 const StoredResultSchema = z.object({
   outcome: z.enum(["pass", "behavior_failure", "provider_unavailable", "grader_unavailable", "evaluation_unavailable"]).optional(),
@@ -60,7 +61,7 @@ export async function getPublishStatus(ownerId: string, agentId: string, agentVe
   return readPublishStatus(getDb(), ownerId, agentId, agentVersion);
 }
 
-export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun" | "agentRun" | "evaluationManifest" | "knowledgeDocument" | "workspace">,
+export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agent" | "agentDraft" | "testCase" | "testRun" | "agentRun" | "evaluationManifest" | "knowledgeDocument" | "workspace"> & GovernanceReader,
   ownerId: string, agentId: string, agentVersion?: number): Promise<PublishStatus> {
   const agent = await db.agent.findFirst({ where: { id: agentId, ownerId }, select: { version: true } });
   if (!agent) throw new Error("agent_not_found");

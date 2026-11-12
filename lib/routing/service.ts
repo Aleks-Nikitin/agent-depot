@@ -26,7 +26,7 @@ export async function saveRouting(ownerId: string, agentId: string, raw: unknown
     if (row.version !== input.expectedVersion) throw new HttpError(409, "agent_version_changed");
     const { routing, ...base } = AgentConfigSchema.parse(row.config); void routing;
     const config = AgentConfigSchema.parse({ ...base, version: row.version + 1, ...(input.routing ? { routing: input.routing } : {}) });
-    assertNarrowed(config, await lockedPolicy(tx, ownerId));
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
     if (config.routing) selectRoute(config, { ...process.env, ...captureProviderSettings(config) });
     await tx.agent.update({ where: { id: agentId }, data: { config, version: config.version } });
     await tx.agentDraft.create({ data: { agentId, version: config.version, name: config.name, config } });

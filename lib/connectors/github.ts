@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import type { AgentConfig } from "@/lib/agents/contracts";
 import { artifactHash } from "@/lib/agents/releases/fingerprint";
-import { lockedPolicy } from "@/lib/workspaces/policy";
+import { lockedPolicy, assertNarrowed, assertWorkspaceConfig } from "@/lib/workspaces/policy";
 import { HttpError } from "@/lib/auth/errors";
 import { GITHUB_TOOLS, GitHubConnectionInputSchema, IssueDraftSchema, IssueListSchema } from "./contracts";
 import { encryptCredential, decryptCredential, connectorEncryptionReady } from "./secrets";
@@ -49,6 +49,7 @@ export async function githubAvailable(config: AgentConfig, write: boolean) {
 }
 export async function listGitHubIssues(config: AgentConfig, raw: unknown, signal: AbortSignal, fetcher?: typeof fetch) {
   const input = IssueListSchema.parse(raw);
+  await assertWorkspaceConfig(config, false);
   const c = await boundConnection(getDb(), config, false);
   const token = decryptCredential(c.credential, config.ownerId, c.id, c.revision);
   const rawIssues = z.array(GitHubIssueSchema).max(30).parse(await githubRequest(c.repository, token, `/issues?state=${input.state}&per_page=10`, { signal, fetcher }));
@@ -59,7 +60,8 @@ export async function createGitHubIssue(config: AgentConfig, raw: unknown, conte
   const db = getDb();
   // Receipt is committed separately BEFORE opening the external-effect transaction.
   const intent = await db.$transaction(async tx => {
-    const policy = await lockedPolicy(tx, config.ownerId);
+    const policy = await lockedPolicy(tx, config.ownerId, false, config);
+    assertNarrowed(config, policy);
     if (!policy.allowedTools.includes("github_create_issue")) throw new ConnectorError("workspace_tool_denied");
     const c = await boundConnection(tx, config, true);
     await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${context.idempotencyKey}, 0))`;
@@ -75,7 +77,8 @@ export async function createGitHubIssue(config: AgentConfig, raw: unknown, conte
   }
   try {
     return await db.$transaction(async tx => {
-      const policy = await lockedPolicy(tx, config.ownerId);
+      const policy = await lockedPolicy(tx, config.ownerId, false, config);
+      assertNarrowed(config, policy);
       if (!policy.allowedTools.includes("github_create_issue")) throw new ConnectorError("workspace_tool_denied");
       // Disconnect and rotation wait for in-flight writes to settle. No new POST
       // can start after those actions return. Rollback leaves the durable unknown receipt.

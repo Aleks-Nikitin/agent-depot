@@ -28,7 +28,7 @@ export async function identity(tx: Prisma.TransactionClient, ownerId: string, ag
   if (locked.count !== 1) throw new HttpError(404, "agent_not_found");
   const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
   const config = AgentConfigSchema.parse(agent.config);
-  const workspacePolicy = await lockedPolicy(tx, ownerId, true); assertNarrowed(config, workspacePolicy);
+  const workspacePolicy = await lockedPolicy(tx, ownerId, true, config); assertNarrowed(config, workspacePolicy);
   const cases = await tx.testCase.findMany({ where: { agentId } });
   const knowledge = await evaluationKnowledge(tx, ownerId, agentId); const providerSettings = captureProviderSettings(config);
   const manifest = buildEvaluationManifest({ config, cases, knowledge, providerSettings, workspacePolicy, registry: deps.registry });

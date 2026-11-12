@@ -28,7 +28,7 @@ export async function prepareEvaluation(ownerId: string, agentId: string, deps: 
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
     const config = AgentConfigSchema.parse(benchmark?.config ?? agent.config);
-    const workspacePolicy = await lockedPolicy(tx, ownerId, true); assertNarrowed(config, workspacePolicy);
+    const workspacePolicy = await lockedPolicy(tx, ownerId, true, config); assertNarrowed(config, workspacePolicy);
     if (config.id !== agentId || config.ownerId !== ownerId || config.version !== agent.version) throw new Error("invalid_agent_config");
     const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (!rows.length || rows.length > 5) throw new HttpError(409, "suite_requires_one_to_five_tests");

@@ -1,0 +1,10 @@
+ALTER TABLE "Agent" ADD COLUMN "teamId" TEXT;
+CREATE TABLE "Organization" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL, "policy" JSONB NOT NULL, "revision" INTEGER NOT NULL DEFAULT 1, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE "OrganizationMember" ("organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE, "userId" TEXT NOT NULL, "role" TEXT NOT NULL DEFAULT 'member', PRIMARY KEY ("organizationId", "userId"));
+CREATE INDEX "OrganizationMember_userId_idx" ON "OrganizationMember"("userId");
+CREATE TABLE "Team" ("id" TEXT PRIMARY KEY, "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE, "name" TEXT NOT NULL, "policy" JSONB NOT NULL, "revision" INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE "TeamMember" ("teamId" TEXT NOT NULL REFERENCES "Team"("id") ON DELETE CASCADE, "userId" TEXT NOT NULL, PRIMARY KEY ("teamId", "userId"));
+CREATE TABLE "SharedPack" ("id" TEXT PRIMARY KEY, "organizationId" TEXT NOT NULL REFERENCES "Organization"("id") ON DELETE CASCADE, "name" TEXT NOT NULL, "version" INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE "SharedPackVersion" ("packId" TEXT NOT NULL REFERENCES "SharedPack"("id") ON DELETE CASCADE, "version" INTEGER NOT NULL, "payload" JSONB NOT NULL, "hash" TEXT NOT NULL, "createdBy" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY ("packId", "version"));
+CREATE FUNCTION prevent_pack_version_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'pack_version_immutable'; END $$;
+CREATE TRIGGER "SharedPackVersion_immutable" BEFORE UPDATE ON "SharedPackVersion" FOR EACH ROW EXECUTE FUNCTION prevent_pack_version_update();

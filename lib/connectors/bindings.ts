@@ -14,7 +14,7 @@ export async function saveGitHubBinding(ownerId: string, agentId: string, raw: u
     if (!locked.count) throw new HttpError(404, "agent_not_found");
     const row = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
     if (row.version !== input.expectedVersion) throw new HttpError(409, "agent_version_changed");
-    const policy = await lockedPolicy(tx, ownerId);
+    await lockedPolicy(tx, ownerId);
     const connection = await tx.gitHubConnection.findUnique({ where: { ownerId } });
     if ((input.read || input.write) && (!connection?.enabled || (input.write && !connection.allowWrites))) throw new HttpError(409, "connector_not_connected");
     const { github, ...base } = AgentConfigSchema.parse(row.config); void github;
@@ -22,7 +22,7 @@ export async function saveGitHubBinding(ownerId: string, agentId: string, raw: u
       enabledTools: [...base.enabledTools.filter(t => !GITHUB_TOOLS.includes(t as typeof GITHUB_TOOLS[number])), ...(input.read ? [GITHUB_TOOLS[0]] : []), ...(input.write ? [GITHUB_TOOLS[1]] : [])],
       ...((input.read || input.write) && connection ? { github: { connectionId: connection.id, revision: connection.revision, repository: connection.repository } } : {}),
     });
-    assertNarrowed(config, policy);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
     await tx.agent.update({ where: { id: agentId }, data: { config, version: config.version } });
     await tx.agentDraft.create({ data: { agentId, version: config.version, name: config.name, config } });
     return { version: config.version };

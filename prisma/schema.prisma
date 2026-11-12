@@ -85,6 +85,7 @@ enum ApprovalStatus {
 }
 
 model Agent {
+  teamId String?
   id               String         @id @default(uuid())
   ownerId          String
   name             String
@@ -106,6 +107,58 @@ model Agent {
   testCases        TestCase[]     // NEW
 
   @@index([ownerId])
+}
+
+model Organization {
+  id String @id @default(uuid())
+  name String
+  policy Json
+  revision Int @default(1)
+  createdAt DateTime @default(now())
+  members OrganizationMember[]
+  teams Team[]
+  packs SharedPack[]
+}
+model OrganizationMember {
+  organizationId String
+  userId String
+  role String @default("member")
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@id([organizationId, userId])
+  @@index([userId])
+}
+model Team {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  policy Json
+  revision Int @default(1)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+}
+model TeamMember {
+  teamId String
+  userId String
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  @@id([teamId, userId])
+}
+model SharedPack {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  version Int @default(1)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions SharedPackVersion[]
+}
+model SharedPackVersion {
+  packId String
+  version Int
+  payload Json
+  hash String
+  createdBy String
+  createdAt DateTime @default(now())
+  pack SharedPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  @@id([packId, version])
 }
 
 model AgentDraft {

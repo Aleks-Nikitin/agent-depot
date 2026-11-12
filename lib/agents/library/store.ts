@@ -43,7 +43,7 @@ function buildConfig(
   id: string,
   ownerId: string,
   version: number,
-  input: AgentInput,
+  input: AgentInput & { governance?: AgentConfig["governance"] },
 ): AgentConfig {
   return AgentConfigSchema.parse({
     id,
@@ -51,6 +51,7 @@ function buildConfig(
     version,
     ...(input.routing ? { routing: input.routing } : {}),
     ...(input.github ? { github: input.github } : {}),
+    ...(input.governance ? { governance: input.governance } : {}),
     name: input.name,
     instructions: input.instructions,
     model: "gemini",
@@ -128,7 +129,7 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
   const db = getDb();
   await db.$transaction(async (tx) => {
     await ensureWorkspace(tx, ownerId);
-    assertNarrowed(config, await lockedPolicy(tx, ownerId));
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
     await tx.agent.create({
       data: { id, ownerId, name: input.name, version: 1, config },
     });
@@ -154,8 +155,8 @@ export async function updateAgent(
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
     const previous = AgentConfigSchema.parse(current.config);
-    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? previous.routing, github: input.github ?? previous.github });
-    assertNarrowed(config, await lockedPolicy(tx, ownerId));
+    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? previous.routing, github: input.github ?? previous.github, governance: previous.governance });
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
     await tx.agent.update({
       where: { id },
       data: { name: input.name, version: nextVersion, config },
@@ -182,6 +183,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     fallbackModelProfile: sourceConfig.fallbackModelProfile,
     routing: sourceConfig.routing,
     github: sourceConfig.github,
+    governance: sourceConfig.governance,
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
     requireWriteApproval: sourceConfig.requireWriteApproval,
@@ -189,8 +191,8 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
   });
   await db.$transaction(async (tx) => {
     await ensureWorkspace(tx, ownerId);
-    assertNarrowed(config, await lockedPolicy(tx, ownerId));
-    await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
+    await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config, teamId: config.governance?.teamId } });
     await tx.agentDraft.create({
       data: { agentId: newId, version: 1, name, config },
     });
@@ -229,12 +231,13 @@ export async function rollbackAgent(
       fallbackModelProfile: targetConfig.fallbackModelProfile,
       routing: targetConfig.routing,
       github: targetConfig.github,
+      governance: AgentConfigSchema.parse(current.config).governance,
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
       requireWriteApproval: targetConfig.requireWriteApproval,
       workspaceName: targetConfig.workspaceName,
     });
-    assertNarrowed(config, await lockedPolicy(tx, ownerId));
+    assertNarrowed(config, await lockedPolicy(tx, ownerId, false, config));
     await tx.agent.update({
       where: { id },
       data: { name: target.name, version: nextVersion, config },
