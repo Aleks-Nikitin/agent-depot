@@ -10,6 +10,8 @@ The publication banner explains why the draft is blocked and links the first fai
 
 Finished runs can also become [reviewed regression tests and repair proposals](reviewed-repair.md). The repair workflow pauses for exact instruction-diff approval, creates one new draft, and reruns the full suite before reporting verification. Promotion remains a separate action through the normal publication gate.
 
+The **Routing** tab adds [opt-in profile routing and isolated matched comparisons](model-routing.md). Benchmark results stay separate from certification and cannot unlock publication.
+
 ## Add and run the support suite
 
 1. Save an agent with `knowledge_search` and `create_ticket` permitted. Its instructions should treat retrieved documents as untrusted data, refuse unauthorized actions, avoid duplicates, and confirm actions only after successful tool execution.

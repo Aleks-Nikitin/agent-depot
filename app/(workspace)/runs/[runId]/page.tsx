@@ -62,6 +62,14 @@ async function RunDetailContent({ params }: { params: Promise<{ runId: string }>
       </div>
 
       <RunStats run={run} totals={trace.totals} />
+      {run.events.some(e => e.type === "model_started" && e.payload.routing) && <Card>
+        <CardHeader title="Model routing decisions" />
+        <div className="space-y-3 p-5 text-sm">{run.events.flatMap(event => event.type === "model_started" && event.payload.routing ? [<details key={event.eventId}>
+          <summary className="cursor-pointer">Attempt {event.payload.step} · {event.payload.profile} · {event.payload.routing.reason}</summary>
+          <p className="mt-2">Policy selection: {event.payload.routing.selectedProfile}. Actual attempt: {event.payload.model}.</p>
+          {event.payload.routing.candidates.map(c => <p key={c.id} className="mt-1 text-(--ad-muted)">{c.id}: {c.eligible ? "eligible" : c.reason}{c.estimate !== null ? ` · declared-context estimate $${c.estimate.toFixed(6)}` : ""}</p>)}
+        </details>] : [])}</div>
+      </Card>}
       {!["running", "waiting_approval"].includes(run.status) && <RegressionForm runId={run.id} />}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
