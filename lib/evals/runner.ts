@@ -21,13 +21,13 @@ import type { TestCase, TestResult, TestRunReport } from "./types";
 import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
 import { workspaceCall } from "@/lib/workspaces/budget";
 
-export async function prepareEvaluation(ownerId: string, agentId: string, deps: RuntimeDependencies, transaction?: Prisma.TransactionClient) {
+export async function prepareEvaluation(ownerId: string, agentId: string, deps: RuntimeDependencies, transaction?: Prisma.TransactionClient, benchmark?: { config: import("@/lib/agents/contracts").AgentConfig; baseManifestHash: string }) {
   const db = getDb();
   const capture = async (tx: Prisma.TransactionClient) => {
     const locked = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 0 } } });
     if (locked.count !== 1) throw new Error("agent_not_found");
     const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
-    const config = AgentConfigSchema.parse(agent.config);
+    const config = AgentConfigSchema.parse(benchmark?.config ?? agent.config);
     const workspacePolicy = await lockedPolicy(tx, ownerId, true); assertNarrowed(config, workspacePolicy);
     if (config.id !== agentId || config.ownerId !== ownerId || config.version !== agent.version) throw new Error("invalid_agent_config");
     const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
@@ -36,9 +36,15 @@ export async function prepareEvaluation(ownerId: string, agentId: string, deps: 
     if (await tx.testRun.findFirst({ where: { agentId, status: "running", OR: [{ jobId: { not: null } }, { createdAt: { gt: cutoff } }] } })) throw new HttpError(409, "evaluation_running");
     await tx.testRun.updateMany({ where: { agentId, status: "running", jobId: null }, data: { status: "failed", passed: false } });
     const cases: TestCase[] = rows.map(row => ({ ...row, fixtures: EvaluationSeedSchema.parse(row.fixtures), stateAssertions: StateAssertionsSchema.parse(row.stateAssertions), source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
-    const record = await tx.testRun.create({ data: { agentId, agentVersion: config.version, results: [], passed: false,
-      passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
     const knowledge = await evaluationKnowledge(tx, ownerId);
+    if (benchmark) {
+      const base = buildEvaluationManifest({ config: AgentConfigSchema.parse(agent.config), cases, knowledge, providerSettings: captureProviderSettings(AgentConfigSchema.parse(agent.config)), workspacePolicy, registry: deps.registry });
+      if (base.hash !== benchmark.baseManifestHash) throw new HttpError(409, "benchmark_dependencies_changed");
+      const stripRoute = (c: typeof config) => { const { routing, ...rest } = c; void routing; return rest; };
+      if (artifactHash(stripRoute(config)) !== artifactHash(stripRoute(AgentConfigSchema.parse(agent.config)))) throw new HttpError(409, "benchmark_config_mismatch");
+    }
+    const record = await tx.testRun.create({ data: { purpose: benchmark ? "benchmark" : "certification", agentId, agentVersion: config.version, results: [], passed: false,
+      passedCount: 0, totalCount: cases.length, testsFingerprint: testFingerprint(cases), configHash: artifactHash(config), providerSettings: captureProviderSettings(config), status: "running" } });
     const manifest = buildEvaluationManifest({ config, cases, knowledge, workspacePolicy, providerSettings: ProviderSettingsSchema.parse(record.providerSettings), registry: deps.registry });
     await tx.evaluationManifest.create({ data: { testRunId: record.id, hash: manifest.hash, payload: manifest.payload } });
     return { config, cases, record, knowledge, manifest, workspacePolicy };

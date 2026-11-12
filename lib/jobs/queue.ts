@@ -79,3 +79,13 @@ export async function enqueueApproval(ownerId: string, approvalId: string, appro
     return { runId: claim.approval.runId, payload: json({ approvalId, approved, event: claim.event }) };
   });
 }
+
+/** Internal-only pinned shadow evaluations; no route accepts a replacement configuration. */
+export async function enqueueBenchmarkEvaluation(ownerId: string, agentId: string, key: string,
+  benchmark: { config: import("@/lib/agents/contracts").AgentConfig; baseManifestHash: string }, deps: RuntimeDependencies) {
+  return enqueue(ownerId, agentId, `benchmark:${agentId}`, key, benchmark, "evaluation", async (tx, id) => {
+    const snapshot = await prepareEvaluation(ownerId, agentId, deps, tx, benchmark);
+    await tx.testRun.update({ where: { id: snapshot.record.id }, data: { jobId: id } });
+    return { testRunId: snapshot.record.id, payload: json(snapshot) };
+  });
+}

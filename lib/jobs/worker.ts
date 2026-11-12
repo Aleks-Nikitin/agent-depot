@@ -1,3 +1,4 @@
+import { notifyBenchmarkChild } from "@/lib/routing/worker";
 import { notifyRepairChild } from "@/lib/repairs/schedule";
 import { z } from "zod";
 import { getDb } from "@/lib/db/prisma";
@@ -42,23 +43,23 @@ async function settleInterrupted(job: { ownerId: string; runId: string | null; t
 export async function processExecutionJob(jobId: string, deps = runtimeServices() as RuntimeDependencies, grader = gradeAnswer, workerSignal?: AbortSignal) {
   const db = getDb();
   const job = await db.executionJob.findUniqueOrThrow({ where: { id: jobId } });
-  if (["completed", "failed", "cancelled"].includes(job.status)) { await notifyRepairChild(jobId); return; }
+  if (["completed", "failed", "cancelled"].includes(job.status)) { await notifyRepairChild(jobId); await notifyBenchmarkChild(jobId); return; }
   if (job.status === "running") {
     // Graphile delivers one locked job at a time. A second delivery means the earlier worker exited.
     if (job.runId) {
       const run = await db.agentRun.findUnique({ where: { id: job.runId } });
       if (run && run.status !== "running") {
-        await db.executionJob.update({ where: { id: jobId }, data: { status: "completed", finishedAt: new Date() } }); await notifyRepairChild(jobId); return;
+        await db.executionJob.update({ where: { id: jobId }, data: { status: "completed", finishedAt: new Date() } }); await notifyRepairChild(jobId); await notifyBenchmarkChild(jobId); return;
       }
     }
     if (job.testRunId) {
       const record = await db.testRun.findUnique({ where: { id: job.testRunId }, include: { manifest: true } });
       if (record?.status === "completed") {
-        await db.executionJob.update({ where: { id: jobId }, data: { status: "completed", result: JSON.parse(JSON.stringify(testReportFromRecord(record))), finishedAt: new Date() } }); await notifyRepairChild(jobId); return;
+        await db.executionJob.update({ where: { id: jobId }, data: { status: "completed", result: JSON.parse(JSON.stringify(testReportFromRecord(record))), finishedAt: new Date() } }); await notifyRepairChild(jobId); await notifyBenchmarkChild(jobId); return;
       }
     }
     await settleInterrupted(job, "worker_interrupted");
-    await db.executionJob.update({ where: { id: jobId }, data: { status: "failed", reason: "worker_interrupted", finishedAt: new Date() } }); await notifyRepairChild(jobId); return;
+    await db.executionJob.update({ where: { id: jobId }, data: { status: "failed", reason: "worker_interrupted", finishedAt: new Date() } }); await notifyRepairChild(jobId); await notifyBenchmarkChild(jobId); return;
   }
   const claimed = await db.executionJob.updateMany({ where: { id: jobId, status: "queued" }, data: { status: "running" } });
   if (claimed.count !== 1) return;
@@ -100,5 +101,5 @@ export async function processExecutionJob(jobId: string, deps = runtimeServices(
   } catch {
     await settleInterrupted(job, signal.aborted ? "cancelled" : "worker_execution_unavailable");
     await db.executionJob.update({ where: { id: jobId }, data: { status: cancellationRequested ? "cancelled" : "failed", reason: cancellationRequested ? "cancelled" : "worker_execution_unavailable", finishedAt: new Date() } });
-  } finally { clearInterval(timer); await notifyRepairChild(jobId); }
+  } finally { clearInterval(timer); await notifyRepairChild(jobId); await notifyBenchmarkChild(jobId); }
 }

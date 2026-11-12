@@ -34,7 +34,7 @@ export type PublishStatus = {
 /** The most recent TestRun for this exact agent version, or null. */
 export async function latestTestRun(ownerId: string, agentId: string, agentVersion: number) {
   if (!await getDb().agent.findFirst({ where: { id: agentId, ownerId } })) throw new Error("agent_not_found");
-  return getDb().testRun.findFirst({ where: { agentId, agentVersion }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  return getDb().testRun.findFirst({ where: { purpose: "certification", agentId, agentVersion }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
 }
 
 /** Latest TestRun for a version in the Tests page's report shape; malformed stored results are skipped. */
@@ -66,7 +66,7 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
   if (!agent) throw new Error("agent_not_found");
   const version = agentVersion ?? agent.version;
   const [cases, run] = await Promise.all([db.testCase.findMany({ where: { agentId } }),
-    db.testRun.findFirst({ where: { agentId, agentVersion: version }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] })]);
+    db.testRun.findFirst({ where: { purpose: "certification", agentId, agentVersion: version }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] })]);
   const testCount = cases.length;
   const counts = { agentVersion: version, passedCount: run?.passedCount ?? 0, totalCount: run?.totalCount ?? 0, lastRunAt: run?.createdAt.toISOString() ?? null };
 
@@ -98,7 +98,7 @@ export async function readPublishStatus(db: Pick<Prisma.TransactionClient, "agen
 /** Metrics for recorded suite evidence, not inferred model quality. */
 export async function getTestQuality(ownerId: string, agentId: string, version: number, report: TestRunReport | null) {
   if (!await getDb().agent.findFirst({ where: { id: agentId, ownerId } })) throw new Error("agent_not_found");
-  const previous = await getDb().testRun.findFirst({ where: { agentId, agentVersion: { lt: version }, status: "completed" },
+  const previous = await getDb().testRun.findFirst({ where: { purpose: "certification", agentId, agentVersion: { lt: version }, status: "completed" },
     orderBy: [{ agentVersion: "desc" }, { createdAt: "desc" }, { id: "desc" }] });
   const runIds = report?.results.flatMap(result => result.runId ? [result.runId] : []) ?? [];
   const toolErrors = await getDb().runEvent.count({ where: { runId: { in: runIds }, run: { ownerId }, type: "tool_failed" } });

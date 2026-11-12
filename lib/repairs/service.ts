@@ -62,7 +62,7 @@ export async function startRepair(ownerId: string, runId: string, deps = runtime
     const requestKey = artifactHash({ ownerId, runId, proposalHash });
     const prior = await tx.repairCase.findUnique({ where: { requestKey } }); if (prior) return { id: prior.id };
     const target = buildEvaluationManifest({ ...current, config: proposed, registry: deps.registry });
-    const previous = await tx.testRun.findFirst({ where: { agentId: current.config.id, agentVersion: current.config.version, status: "completed" }, include: { manifest: true }, orderBy: { createdAt: "desc" } });
+    const previous = await tx.testRun.findFirst({ where: { purpose: "certification", agentId: current.config.id, agentVersion: current.config.version, status: "completed" }, include: { manifest: true }, orderBy: { createdAt: "desc" } });
     const id = randomUUID();
     await tx.repairCase.create({ data: { id, ownerId, agentId: current.config.id, sourceRunId: runId, testCaseId: test.id, requestKey,
       baseVersion: current.config.version, baseHash, manifestHash, targetManifestHash: target.hash, testsFingerprint: testFingerprint(current.cases), proposalHash,

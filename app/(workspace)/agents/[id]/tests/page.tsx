@@ -20,7 +20,8 @@ async function loadSavedTests(ownerId: string, agentId: string) {
   const [cases, publish] = await Promise.all([listTestCases(ownerId, agentId), getPublishStatus(ownerId, agentId)]);
   const report = await latestTestReport(ownerId, agentId, publish.agentVersion);
   const quality = await getTestQuality(ownerId, agentId, publish.agentVersion, report);
-  const active = await getDb().executionJob.findFirst({ where: { ownerId, agentId, kind: "evaluation", status: { in: ["queued", "running"] } }, orderBy: { createdAt: "desc" } });
+  const normal = await getDb().testRun.findFirst({ where: { agentId, purpose: "certification", status: "running", jobId: { not: null } }, orderBy: { createdAt: "desc" } });
+  const active = normal?.jobId ? await getDb().executionJob.findFirst({ where: { id: normal.jobId, ownerId, status: { in: ["queued", "running"] } } }) : null;
   return { cases, publish, report, quality, initialJobId: active?.id, now: Date.now() };
 }
 

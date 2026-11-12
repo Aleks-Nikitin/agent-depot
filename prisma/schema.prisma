@@ -101,6 +101,7 @@ model Agent {
   servingReleaseId String?
   servingGeneration Int @default(0)
   servingRelease   AgentRelease? @relation("ServingRelease", fields: [servingReleaseId], references: [id], onDelete: SetNull)
+  routingBenchmarks RoutingBenchmark[]
   repairCases      RepairCase[]
   testCases        TestCase[]     // NEW
 
@@ -262,6 +263,7 @@ model TestCase {
 
 // NEW
 model TestRun {
+  purpose String @default("certification")
   jobId        String? @unique
   manifest EvaluationManifest?
   id           String   @id @default(uuid())
@@ -478,4 +480,22 @@ model RepairCase {
   updatedAt DateTime @updatedAt
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   @@index([ownerId, createdAt])
+}
+
+model RoutingBenchmark {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  requestKey String @unique
+  status String @default("queued")
+  repeats Int
+  baseManifestHash String
+  payload Json
+  childJobIds String[] @default([])
+  activeJobId String? @unique
+  reason String?
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, agentId, createdAt])
 }

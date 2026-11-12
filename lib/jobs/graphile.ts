@@ -1,3 +1,4 @@
+import { processBenchmark } from "@/lib/routing/worker";
 import { Logger, type TaskList } from "graphile-worker";
 import { Pool } from "pg";
 import { z } from "zod";
@@ -19,6 +20,13 @@ export function workerOptions(deps?: RuntimeDependencies) {
       if (helpers.job.attempts >= helpers.job.max_attempts && !helpers.abortSignal.aborted) {
         await getDb().repairCase.updateMany({ where: { id: caseId, status: { notIn: TERMINAL_REPAIRS } }, data: { status: "failed", reason: "repair_worker_retry_exhausted" } });
       }
+      throw error;
+    }
+  }, benchmark_operation: async (payload, helpers) => {
+    const { benchmarkId } = z.object({ benchmarkId: z.uuid() }).strict().parse(payload);
+    try { await processBenchmark(benchmarkId, deps, helpers.abortSignal); }
+    catch (error) {
+      if (helpers.job.attempts >= helpers.job.max_attempts && !helpers.abortSignal.aborted) await getDb().routingBenchmark.updateMany({ where: { id: benchmarkId, status: { in: ["queued", "running"] } }, data: { status: "failed", reason: "benchmark_execution_unavailable", finishedAt: new Date() } });
       throw error;
     }
   } };

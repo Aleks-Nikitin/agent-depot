@@ -18,7 +18,7 @@ export async function promoteRelease(ownerId: string, agentId: string, expectedV
     const draft = await tx.agentDraft.findUniqueOrThrow({ where: { agentId_version: { agentId, version: agent.version } } });
     const config = AgentConfigSchema.parse(draft.config);
     if (artifactHash(config) !== artifactHash(AgentConfigSchema.parse(agent.config))) throw new HttpError(409, "draft_changed");
-    const run = await tx.testRun.findFirstOrThrow({ where: { agentId, agentVersion: agent.version }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+    const run = await tx.testRun.findFirstOrThrow({ where: { purpose: "certification", agentId, agentVersion: agent.version }, include: { manifest: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
     const providerSettings = ProviderSettingsSchema.parse(run.providerSettings);
     const evidence = { manifestHash: run.manifest!.hash, manifest: run.manifest!.payload, testRunId: run.id, testsFingerprint: run.testsFingerprint, results: run.results,
       passedCount: run.passedCount, totalCount: run.totalCount, finishedAt: run.finishedAt!.toISOString() };
