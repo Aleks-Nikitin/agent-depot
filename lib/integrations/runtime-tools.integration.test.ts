@@ -14,7 +14,9 @@ import { runtimeRegistry } from "./runtime-tools";
 const db = getDb();
 const ownerId = `tool-integration-${randomUUID()}`;
 const runs: string[] = [];
-const config = { ...supportAgent, ownerId, enabledTools: [...runtimeRegistry.keys()] };
+// These legacy fixtures exercise internal/search tools, without granting a new
+// workspace access to explicitly connected external repositories.
+const config = { ...supportAgent, ownerId, enabledTools: [...runtimeRegistry.values()].filter(tool => !tool.external).map(tool => tool.id) };
 const context = { domain: liveDomainRepository(ownerId), ownerId, runId: "read-only", toolCallId: "read", idempotencyKey: "read", signal: AbortSignal.timeout(10_000) };
 afterAll(async () => {
   await db.demoTicket.deleteMany({ where: { ownerId } });
