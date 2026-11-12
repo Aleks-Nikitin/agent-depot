@@ -19,6 +19,7 @@ export function TopNav() {
     { href: agentId ? `/agents/${agentId}/playground` : "/playground", label: "Playground", active: pathname.endsWith("/playground") },
     { href: agentId ? `/agents/${agentId}/tests` : "/tests", label: "Tests", active: pathname.endsWith("/tests") },
     { href: "/tools", label: "Tools & knowledge", active: pathname === "/tools" },
+    { href: "/teams", label: "Teams", active: pathname === "/teams" },
   ];
   return (
     <header className="border-b border-(--ad-border) bg-(--ad-surface)">

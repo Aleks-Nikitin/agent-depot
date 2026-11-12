@@ -12,6 +12,7 @@ const tabs = [
   { segment: "tests", label: "Tests", path: "/tests" },
   { segment: "routing", label: "Routing", path: "/routing" },
   { segment: "connections", label: "Connections", path: "/connections" },
+  { segment: "governance", label: "Governance", path: "/governance" },
   { segment: "versions", label: "Versions", path: "/versions" },
 ] as const;
 
