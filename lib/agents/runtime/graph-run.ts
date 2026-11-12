@@ -7,7 +7,7 @@ import { toolFailureReason } from "./failures";
 import type { ModelMessage } from "ai";
 import { isDeepStrictEqual } from "node:util";
 import { type AgentRunResult, type EventInput, type RunStep } from "../contracts";
-import { dispatchTool, enabledTools, permittedTool } from "../tools/registry";
+import { dispatchTool, availableTools, permittedTool } from "../tools/registry";
 import type { Checkpoint, PendingCall } from "./state";
 import { withCancellation } from "./cancellation";
 
@@ -114,7 +114,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       wrapModelCall: (request, handler) => track(async () => {
         signal.throwIfAborted(); elapsed();
         guard(state.activeMs < config.limits.timeoutMs, "deadline");
-        const tools = enabledTools(config, deps.registry);
+        const tools = await availableTools(config, deps.registry, deps.domain);
         // Conservative text estimate: full UTF-8 byte size plus schema/prompt margin.
         // This is explicitly an estimate, not a provider invoice guarantee.
         const bytes = Buffer.byteLength(JSON.stringify({ instructions: config.instructions, messages: state.messages,
@@ -127,7 +127,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
           settle: async (attempt, result) => { elapsed(); version = await deps.store.settleModelAttempt(runId, ownerId, version, state, attempt, result); },
           invoke: async active => {
             if (!active.chatModel) return { turn: await active.turn(config, state.messages as ModelMessage[], tools, signal) };
-            const nativeResponse = await handler({ ...request, model: active.chatModel });
+            const nativeResponse = await handler({ ...request, model: active.chatModel, tools: request.tools.filter(t => tools.some(allowed => allowed.id === t.name)) });
             return { turn: nativeModelTurn(nativeResponse), nativeResponse };
           },
         });
@@ -241,7 +241,7 @@ export async function executeGraph(runId: string, ownerId: string, deps: Runtime
       return output;
 
     }
-    const tools = enabledTools(config, deps.registry).filter(t => !t.retired && !t.unavailable?.()).map(t =>
+    const tools = (await availableTools(config, deps.registry, deps.domain)).map(t =>
       tool(async () => { throw new Error("unguarded_tool_execution"); }, { name: t.id, description: t.description, schema: t.inputSchema as z.ZodObject }));
     const agent = createAgent({
       model: deps.driver.chatModel ?? new MiddlewareModel({}),

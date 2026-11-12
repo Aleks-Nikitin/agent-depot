@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const GitHubBindingSchema = z.object({
   connectionId: z.string().uuid(), revision: z.number().int().positive(),
+  repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/).optional(),
 }).strict();
 export const GitHubConnectionInputSchema = z.object({
   repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9_.-]{1,100}$/).refine(v => !v.endsWith("/.") && !v.endsWith("/..")),
@@ -13,6 +14,7 @@ export const IssueDraftSchema = z.object({
   body: z.string().trim().min(1).max(6000).refine(v => !v.includes("agent-depot-operation:")),
 }).strict();
 export const IssueListSchema = z.object({ state: z.enum(["open", "closed", "all"]).default("open") }).strict();
+export const GitHubIssueInputSchema = IssueDraftSchema.extend({ repository: GitHubBindingSchema.shape.repository.unwrap() }).strict();
 export const IssueResultSchema = z.object({ number: z.number().int().positive(), title: z.string().max(300), url: z.string().url().max(500) }).strict();
 export const GITHUB_TOOLS = ["github_list_issues", "github_create_issue"] as const;
 

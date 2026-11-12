@@ -3,7 +3,7 @@ import { StateAssertionsSchema } from "./state/schema";
 import { z } from "zod";
 
 // Browser-safe tool IDs for test forms; schema.test.ts keeps this list aligned with the trusted runtime.
-export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "order_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage"] as const;
+export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "order_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage", "github_list_issues", "github_create_issue"] as const;
 /** Planned integrations (Dev 4): allowed in tests before they are registered. */
 export const PLANNED_TOOL_IDS = [] as const;
 export const TOOL_IDS = [...REGISTERED_TOOL_IDS, ...PLANNED_TOOL_IDS] as const;

@@ -41,7 +41,7 @@ async function boundConnection(tx: Prisma.TransactionClient, config: AgentConfig
   const binding = config.github;
   if (!binding || !connectorEncryptionReady()) throw new ConnectorError("connector_not_connected");
   const connection = await tx.gitHubConnection.findFirst({ where: { id: binding.connectionId, ownerId: config.ownerId, enabled: true, revision: binding.revision } });
-  if (!connection || (write && !connection.allowWrites)) throw new ConnectorError("connector_scope_changed");
+  if (!connection || (write && !connection.allowWrites) || (binding.repository && binding.repository !== connection.repository)) throw new ConnectorError("connector_scope_changed");
   return connection;
 }
 export async function githubAvailable(config: AgentConfig, write: boolean) {

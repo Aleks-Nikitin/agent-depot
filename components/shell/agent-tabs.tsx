@@ -11,6 +11,7 @@ const tabs = [
   { segment: "playground", label: "Playground", path: "/playground" },
   { segment: "tests", label: "Tests", path: "/tests" },
   { segment: "routing", label: "Routing", path: "/routing" },
+  { segment: "connections", label: "Connections", path: "/connections" },
   { segment: "versions", label: "Versions", path: "/versions" },
 ] as const;
 

@@ -16,6 +16,7 @@ export function modelFailureReason(error: unknown): string {
   return "model_response_invalid";
 }
 export const toolFailureCodes = new Set([
+  "connector_not_connected", "connector_scope_changed", "connector_access_denied", "connector_rate_limited", "connector_request_failed", "connector_outcome_unknown", "connector_response_invalid", "connector_credential_unavailable",
   "workspace_tool_denied", "workspace_limit_exceeded", "guest_execution_disabled",
   "evaluation_scope_unavailable", "evaluation_external_tool_disabled", "domain_owner_mismatch", "domain_scope_required",
   "ticket_not_found", "idempotency_conflict", "search_not_configured", "search_rate_limited", "search_access_denied", "search_unavailable", "search_response_invalid",

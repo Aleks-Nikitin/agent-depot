@@ -4,6 +4,7 @@ import { demoTools } from "./demo-tools";
 import { integrationTools } from "./index";
 import { lookupSales } from "./salesLookup";
 import { searchKnowledge } from "./knowledgeSearch";
+import { githubTools } from "@/lib/connectors/tools";
 
 export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).map(tool => ({
   implementationVersion: "domain-tools-v1",
@@ -45,4 +46,5 @@ runtimeTools.push({
     return { order: await context.domain.order(orderId) };
   },
 });
+runtimeTools.push(...githubTools);
 export const runtimeRegistry = createRegistry(runtimeTools);

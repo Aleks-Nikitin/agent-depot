@@ -11,3 +11,23 @@ External write intent is recorded before the HTTP request. A successful result i
 The implementation uses fixed GitHub API endpoints, refuses redirects, applies time and response limits, and returns bounded issue fields. Repository moves require reconnecting deliberately. Tokens are resolved only by server executors and are excluded from connection metadata, tool arguments, results and execution checkpoints.
 
 Local verification uses three PostgreSQL integration tests with replayed GitHub responses: encryption/ownership/revocation, ambiguous completion and reconciliation, and status handling/idempotent success. A real GitHub side effect is a separate opt-in verification.
+
+## Using the connector
+
+Open **Tools & knowledge → GitHub issue triage** to connect, rotate or disconnect access. Anonymous sessions cannot connect credentials. In an agent's **Connections** tab, select read issues and/or propose issue creation, then save. This creates a new draft with a pinned connection revision; it does not change the serving release. Existing builder saves preserve the binding. Rotating a token requires saving a new binding and re-evaluating publication evidence.
+
+`github_list_issues` returns up to ten recent issues, excluding pull requests. `github_create_issue` proposes an exact repository, title and body for the existing approval flow. Approval is mandatory even when the agent allows other automatic writes. The executor rejects any repository other than the pinned connection. Treat fetched issue text as untrusted content, not instructions or permission. Successful tool events include the issue URL. Tools are hidden when unconnected/revoked and both reads and writes are blocked during isolated evaluations; an evaluation attempt is not a live integration test or proof of external success.
+
+Recent operations link to their saved execution evidence in Tools & knowledge. **Check GitHub for completion** only performs bounded reads; it never resends an uncertain POST. Disconnect waits for an already-running write to settle and prevents later calls. It does not recall completed external effects.
+
+Authenticated, same-origin endpoints:
+
+- `GET/PUT/DELETE /api/connectors/github`: metadata/operations, connect or rotate, disconnect.
+- `POST /api/connectors/github/reconcile`: `{ "key": "run-id:call-id" }` for an owned unknown operation.
+- `PUT /api/agents/:id/github`: `{ "expectedVersion": 1, "read": true, "write": false }` to save a pinned agent draft.
+
+References: [GitHub Issues REST API](https://docs.github.com/en/rest/issues/issues), [GitHub REST best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api).
+
+### Live verification
+
+On November 12, 2026, the repository owner authorized one disposable issue in `Aleks-Nikitin/agent-depot`. [Verification issue #24](https://github.com/Aleks-Nikitin/agent-depot/issues/24) was created through `runAgent` → persistent approval interrupt → `resumeAgent` → the connector executor. The durable operation confirmed completion. This used a deterministic verification driver, with no live model calls and no customer data. Temporary credential access was disconnected and erased afterward. This proves the connector's live issue effect and approval path, not a live model's triage quality or a deployed end-user credential flow.

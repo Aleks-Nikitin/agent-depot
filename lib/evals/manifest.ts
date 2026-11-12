@@ -11,7 +11,7 @@ import { effectiveAssertions, fixtureSnapshot } from "./state/check";
 import { TestCaseInputSchema } from "./schema";
 
 // Bump these declarations when tool effects or runtime/assertion policy semantics change.
-export const EVALUATION_POLICY_REVISION = "workspace-limits-v2";
+export const EVALUATION_POLICY_REVISION = "external-tools-v3";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const EvaluationManifestSchema = z.object({
   version: z.literal(1), agentId: z.string(), ownerId: z.string(), agentVersion: z.number().int(),
@@ -37,6 +37,7 @@ export function buildEvaluationManifest(options: { config: AgentConfig; cases: {
     return { id, version: tool.implementationVersion, kind: tool.kind, description: tool.description,
       input: tool.inputSchema.toJSONSchema(), output: tool.outputSchema?.toJSONSchema() ?? null,
       scoped: !!tool.domainScoped, automatic: !!tool.automaticWrites, exempt: !!tool.approvalExempt,
+      external: !!tool.external,
       retired: !!tool.retired, unavailable: tool.unavailable?.() ?? null };
   });
   const resolved = cases.map(test => ({ test, fixtures: EvaluationFixturesSchema.parse({ knowledge, ...test.fixtures }) }));
