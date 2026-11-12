@@ -2,13 +2,23 @@
 
 **Build, test, run, and inspect reusable AI agents from one workspace.**
 
-Agent Depot—also called AgentForge in the original project plan—is a hackathon prototype for the platform behind an agent. Instead of writing a new backend for every assistant, configure its instructions, permitted tools, limits, and test cases. One shared Gemini runtime executes those configurations and records what happened.
+Agent Depot—also called AgentForge in the original project plan—is a hackathon prototype for the platform behind an agent. Instead of writing a new backend for every assistant, configure its instructions, permitted tools, limits, and test cases. One shared persistent LangChain runtime executes those configurations and records what happened.
 
 The product follows one workflow:
 
 **Configure → Save → Test → Publish → Run → Inspect → Revise**
 
 Publishing identifies a tested revision. A saved agent can run in the playground before publication.
+
+### Connected capabilities
+
+- [GitHub issue triage](docs/github-connector.md): one scoped repository, encrypted credentials, exact human approval for issue creation and durable reconciliation.
+- [Grounded knowledge](docs/grounded-knowledge.md): validated text/Markdown uploads, immutable source versions, agent access scopes and cited retrieval excerpts.
+- [Teams and shared libraries](docs/team-governance.md): organization/team permission ceilings, versioned instruction/tool/model/test packs and reviewed agent bindings.
+- [Scoped MCP access](docs/mcp-access.md): expiring read-only access to selected agent, release and test metadata for manually configured MCP clients.
+- [Model routing and comparisons](docs/model-routing.md): explicit provider profiles and isolated comparison evidence, separate from release authorization.
+
+The focused guides describe the current implementations and their verification limits; older milestone observations below retain their historical context.
 
 ## Contents
 
@@ -588,7 +598,7 @@ The saved theme uses Next.js `Script` with `beforeInteractive`. Do not replace i
 
 **External checks remain separate:** current Gemini capacity recovery, interactive live GitHub OAuth/provider consent, hosted Tiger application ingestion/analytics, and a full Vultr deployment. A passing local build or simulated-provider test does not establish any of these.
 
-**Not implemented:** Stripe/subscriptions/billing, Nessie, external email/Slack/Discord delivery, external ticketing, general multi-provider model selection, vector/embedding RAG, a visual workflow editor, or autonomous multi-agent orchestration. Knowledge ingestion currently accepts text rather than a complete file-upload/extraction pipeline.
+**Not implemented:** Stripe/subscriptions/billing, Nessie, external email/Slack/Discord delivery, external helpdesk systems beyond the scoped GitHub issue connector, vector/embedding RAG, a visual workflow editor, or autonomous multi-agent orchestration. Knowledge uploads support text and Markdown; PDF, Word and OCR extraction are not included.
 
 For production, further work includes verified deployment configuration, durable job execution/recovery across infrastructure failures, per-user quota/billing policy, broader evaluation coverage, retention/backup procedures, and operational alerting. Do not market the hackathon prototype as a complete enterprise security/compliance solution.
 
