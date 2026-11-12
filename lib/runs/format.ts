@@ -85,6 +85,7 @@ const reasons: Record<string, string> = {
   write_limit: "Write-action limit reached",
   ticket_not_found: "The support ticket does not exist in this workspace",
   step_limit: "Step limit reached", tool_limit: "Tool-call limit reached", budget_limit: "Cost cap reached",
+  routing_context_limit: "The selected profile cannot safely fit this context; raise the approved capacity or choose another profile",
   usage_unknown: "Provider did not report usage", context_limit: "Context too large", output_limit: "Output limit reached",
   checkpoint_upgrade_required: "This older run cannot safely resume after the runtime upgrade. Review any completed actions before starting a new run",
   model_policy_changed: "Model or pricing changed while paused", interrupted_or_timeout: "Run timed out or was interrupted",

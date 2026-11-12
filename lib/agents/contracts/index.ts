@@ -1,3 +1,4 @@
+import { RoutingPolicySchema, RoutingDecisionSchema } from "@/lib/routing/policy";
 import { z } from "zod";
 import { ModelProfileIdSchema } from "../profiles";
 
@@ -19,6 +20,7 @@ export const AgentConfigSchema = z.object({
   model: z.literal("gemini"),
   modelProfile: ModelProfileIdSchema.optional(),
   fallbackModelProfile: ModelProfileIdSchema.optional(),
+  routing: RoutingPolicySchema.optional(),
   enabledTools: z.array(z.string().min(1).max(100)).max(10),
   requireWriteApproval: z.boolean().default(true),
   limits: LimitsSchema.default(() => LimitsSchema.parse({})),
@@ -40,7 +42,7 @@ const envelope = z.object({
 const call = z.object({ toolCallId: z.string(), toolId: z.string(), input: z.unknown() });
 export const RunStepSchema = z.discriminatedUnion("type", [
   envelope.extend({ type: z.literal("run_started"), payload: z.object({ agentId: z.string() }) }),
-  envelope.extend({ type: z.literal("model_started"), payload: z.object({ step: z.number().int(), profile: z.string().optional(), provider: z.string().optional(), model: z.string().optional() }) }),
+  envelope.extend({ type: z.literal("model_started"), payload: z.object({ step: z.number().int(), profile: z.string().optional(), provider: z.string().optional(), model: z.string().optional(), routing: RoutingDecisionSchema.optional() }) }),
   envelope.extend({ type: z.literal("model_finished"), payload: UsageSchema.extend({ failed: z.boolean().optional(), reason: z.string().optional() }) }),
   envelope.extend({ type: z.literal("model_recovery"), payload: z.object({
     action: z.enum(["retrying", "using_fallback"]), reason: z.string(), profile: z.string(), provider: z.string(), model: z.string(),

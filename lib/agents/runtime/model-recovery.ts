@@ -28,6 +28,7 @@ export async function modelWithRecovery(options: {
     guard(state.modelCalls < config.limits.maxModelCalls, "step_limit");
     const spent = state.budgetSpentUsd ?? state.usage.estimatedCostUsd;
     guard(spent !== null, "usage_unknown");
+    guard(!active.contextTokens || options.bytes + 4096 + config.limits.maxOutputTokens <= active.contextTokens, "routing_context_limit");
     const reserved = active.estimate(options.bytes + 4096, config.limits.maxOutputTokens);
     guard(Number.isFinite(reserved) && reserved >= 0, "pricing_unknown");
     guard(spent + reserved <= config.limits.maxEstimatedCostUsd, "budget_limit");
@@ -43,7 +44,7 @@ export async function modelWithRecovery(options: {
     let invoked = false;
     let response: Awaited<ReturnType<typeof options.invoke>>;
     try {
-      await emit({ type: "model_started", payload: { step: attempt, ...identity } });
+      await emit({ type: "model_started", payload: { step: attempt, ...identity, ...(driver.routing ? { routing: driver.routing } : {}) } });
       signal.throwIfAborted();
       invoked = true;
       response = await withCancellation(signal, () => options.invoke(active));

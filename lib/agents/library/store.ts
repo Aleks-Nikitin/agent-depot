@@ -49,6 +49,7 @@ function buildConfig(
     id,
     ownerId,
     version,
+    ...(input.routing ? { routing: input.routing } : {}),
     name: input.name,
     instructions: input.instructions,
     model: "gemini",
@@ -151,7 +152,7 @@ export async function updateAgent(
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
-    const config = buildConfig(id, ownerId, nextVersion, input);
+    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? AgentConfigSchema.parse(current.config).routing });
     assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
@@ -177,6 +178,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     model: "gemini",
     modelProfile: sourceConfig.modelProfile,
     fallbackModelProfile: sourceConfig.fallbackModelProfile,
+    routing: sourceConfig.routing,
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
     requireWriteApproval: sourceConfig.requireWriteApproval,
@@ -222,6 +224,7 @@ export async function rollbackAgent(
       model: "gemini",
       modelProfile: targetConfig.modelProfile,
       fallbackModelProfile: targetConfig.fallbackModelProfile,
+      routing: targetConfig.routing,
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
       requireWriteApproval: targetConfig.requireWriteApproval,

@@ -1,3 +1,5 @@
+import { selectRoute } from "@/lib/routing/policy";
+import { artifactHash } from "../releases/fingerprint";
 import { ProviderSettingsSchema, type ProviderSettings } from "../releases/provider-settings";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
@@ -47,15 +49,22 @@ function nativeProfileDriver(config: AgentConfig, id: ModelProfileId, settings?:
 }
 export function createProfileDriver(config: AgentConfig, snapshot?: ProviderSettings): ModelDriver {
   const settings = snapshot ? ProviderSettingsSchema.parse(snapshot) : undefined;
-  const env = settings ?? process.env;
-  const id = modelProfileId(config);
+  const env = settings ? { ...process.env, ...settings, ROUTING_PROFILE_CATALOG: settings.ROUTING_PROFILE_CATALOG ?? "{}" } : process.env;
+  const route = selectRoute(config, env);
+  const id = route?.selectedProfile ?? modelProfileId(config);
   const primary = nativeProfileDriver(config, id, settings);
   const selected = config.fallbackModelProfile ?? env.RUNTIME_FALLBACK_PROFILE;
-  const fallbackId = selected ? ModelProfileIdSchema.parse(selected) : undefined;
+  const allowedFallback = route && (config.routing!.mode === "locked" || !route.candidates.some(c => c.id === selected && c.eligible) || selected === id) ? undefined : selected;
+  const fallbackId = allowedFallback ? ModelProfileIdSchema.parse(allowedFallback) : undefined;
   if (fallbackId === id) throw new Error("invalid_fallback_profile");
   const fallback = fallbackId ? nativeProfileDriver(config, fallbackId, settings) : undefined;
   const maxRetries = z.coerce.number().int().min(0).max(2).parse(env.RUNTIME_MODEL_MAX_RETRIES ?? "1");
   primary.recovery = { maxRetries, fallback };
+  if (route) {
+    primary.routing = route; primary.contextTokens = route.candidates.find(c => c.id === id)!.contextTokens;
+    if (fallback && fallbackId) fallback.contextTokens = route.candidates.find(c => c.id === fallbackId)!.contextTokens;
+    primary.key += `:routing-v1:${artifactHash({ policy: config.routing, route })}`;
+  }
   primary.key += `:recovery-v1:${maxRetries}:${fallback?.key ?? "none"}`;
   return primary;
 }

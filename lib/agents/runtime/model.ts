@@ -12,6 +12,8 @@ export type ModelTurn = {
   finishReason?: string;
 };
 export interface ModelDriver {
+  routing?: NonNullable<ReturnType<typeof import("@/lib/routing/policy").selectRoute>>;
+  contextTokens?: number;
   identity?: { profile: string; provider: string; model: string };
   recovery?: { maxRetries: number; fallback?: ModelDriver };
   chatModel?: import("@langchain/core/language_models/chat_models").BaseChatModel;
