@@ -161,6 +161,22 @@ model SharedPackVersion {
   @@id([packId, version])
 }
 
+model McpAccessKey {
+  id String @id @default(uuid())
+  ownerId String
+  name String
+  secretHash String @unique
+  scope Json
+  catalogHash String
+  audience String
+  expiresAt DateTime
+  revokedAt DateTime?
+  windowStartedAt DateTime @default(now())
+  requestCount Int @default(0)
+  createdAt DateTime @default(now())
+  @@index([ownerId])
+}
+
 model AgentDraft {
   id        String   @id @default(uuid())
   agentId   String
