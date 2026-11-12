@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db/prisma";
 import { HttpError } from "@/lib/auth/errors";
 import { lockedPolicy, type WorkspacePolicy } from "./policy";
+import type { AgentConfig } from "@/lib/agents/contracts";
 
 export function micros(usd: number) {
   if (!Number.isFinite(usd) || usd < 0 || usd > 1000) throw new Error("invalid_spend_estimate");
@@ -38,10 +39,11 @@ export async function settleCharge(tx: Prisma.TransactionClient, ownerId: string
 
 /** Auxiliary drafting/grading calls use the same atomic budget and concurrency boundary. */
 export async function workspaceCall<T>(ownerId: string, key: string, kind: "draft" | "grader", reservedUsd: number,
-  call: () => Promise<T>, cost: (result: T) => number | null): Promise<T> {
+  call: () => Promise<T>, cost: (result: T) => number | null, config?: AgentConfig): Promise<T> {
   const db = getDb();
   await db.$transaction(async tx => {
-    const policy = await lockedPolicy(tx, ownerId, true);
+    const policy = await lockedPolicy(tx, ownerId, true, config);
+    if (kind === "grader" && policy.governance && !policy.governance.allowedProfiles.includes("gemini-primary")) throw new HttpError(403, "governance_policy_denied");
     if (reservedUsd > policy.limits.maxEstimatedCostUsd) throw new HttpError(403, "workspace_limit_exceeded");
     await acquireSlot(tx, ownerId, key, policy); await reserveCharge(tx, ownerId, key, kind, reservedUsd, policy);
   });

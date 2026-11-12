@@ -19,6 +19,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { evaluationOutcome, PROVIDER_FAILURES } from "./outcome";
 import type { TestCase, TestResult, TestRunReport } from "./types";
 import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
+import { governanceInstructions } from "@/lib/governance/policy";
 import { workspaceCall } from "@/lib/workspaces/budget";
 
 export async function prepareEvaluation(ownerId: string, agentId: string, deps: RuntimeDependencies, transaction?: Prisma.TransactionClient, benchmark?: { config: import("@/lib/agents/contracts").AgentConfig; baseManifestHash: string }) {
@@ -60,7 +61,7 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
   const db = getDb();
   const deps = dependencies ?? runtimeServices();
   const deadline = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(90_000)]);
-  const { config, cases, record, knowledge, manifest } = prepared ?? await prepareEvaluation(ownerId, agentId, deps);
+  const { config, cases, record, knowledge, manifest, workspacePolicy } = prepared ?? await prepareEvaluation(ownerId, agentId, deps);
   if (config.ownerId !== ownerId || config.id !== agentId) throw new Error("evaluation_snapshot_mismatch");
   const results: TestResult[] = [];
   const started = Date.now();
@@ -105,13 +106,13 @@ export async function runEvaluation(ownerId: string, agentId: string, signal?: A
         if (!outcome.passed) { if (checked.status !== "error") checked.status = "failed"; checked.failures.push(...outcome.assertions.flatMap(a => a.reason ? [a.reason] : []), ...(!outcome.ownershipValid ? ["State contains records outside this owner"] : [])); }
         reservedOrSpent += result.usage.estimatedCostUsd ?? budget;
         if (testCase.useGrader && result.status === "completed" && checked.status === "passed") {
-          const gradingInput = { instructions: config.instructions, question: testCase.input, answer: result.response ?? "",
+          const gradingInput = { instructions: governanceInstructions(config, workspacePolicy), question: testCase.input, answer: result.response ?? "",
             toolOutputs: steps.filter(event => event.type === "tool_finished").map(event => event.payload.output), expectedBehavior: testCase.expectedBehavior };
           const reservation = deps.driver.estimate(Buffer.byteLength(JSON.stringify(gradingInput), "utf8") * 2 + 2048, 256);
           if (reservedOrSpent + reservation > 0.1) { checked.status = "error"; checked.failures.push("suite grader budget reached"); }
           else {
             const grade = await workspaceCall(ownerId, `grader:${record.id}:${testCase.id}`, "grader", Math.max(reservation, graderReservation),
-              () => grader(gradingInput, { signal: deadline, trackUsage: true }), result => result.estimatedCostUsd ?? null);
+              () => grader(gradingInput, { signal: deadline, trackUsage: true }), result => result.estimatedCostUsd ?? null, config);
             reservedOrSpent += grade.estimatedCostUsd ?? reservation;
             if (grade.estimatedCostUsd == null) reservedOrSpent = 0.1;
             if (grade.unavailable) { checked.status = "error"; checked.outcome = "grader_unavailable"; checked.failures.push("grader unavailable"); }

@@ -71,15 +71,20 @@ it("previews field-level policy provenance and denies resource expansion even wh
  expect(fetcher).not.toHaveBeenCalled();
 });
 it("invalidates evaluation evidence after policy edits and blocks execution immediately after membership revocation", async () => {
- const owner = await user(), member = await user(); const org = await createOrganization(owner.id, "Evidence policies"); orgs.push(org.id); const team = await createTeam(owner.id, org.id, "Verified");
+ const owner = await user(), member = await user(); const org = await createOrganization(owner.id, "Evidence policies"); orgs.push(org.id);
+ await updatePolicy(owner.id, "organization", org.id, 1, { ...(org.policy as object), mandatoryRules: ["Mandatory receipt evidence."] });
+ const team = await createTeam(owner.id, org.id, "Verified");
  await changeMember(owner.id, org.id, { email: member.email, teamId: team.id });
  const a = await agent(owner.id), b = await agent(member.id); await assign(owner.id, a.id, a.version, team.id); await assign(member.id, b.id, b.version, team.id);
- await createTestCase(owner.id, a.id, { input: "What evidence is required?", mustContain: ["receipt"] });
+ await createTestCase(owner.id, a.id, { input: "What evidence is required?", mustContain: ["receipt"], useGrader: true });
  const driver = { key: "governance-offline", identity: { profile: "gemini-primary", provider: "fixture", model: "fixture" }, estimate: () => 0.00001, turn: async () => ({ text: "A receipt is required.", calls: [], messages: [], inputTokens: 1, outputTokens: 1 }) };
- const report = await runEvaluation(owner.id, a.id, undefined, { store: new PrismaRunStore(db), registry: runtimeRegistry, driver });
+ const report = await runEvaluation(owner.id, a.id, undefined, { store: new PrismaRunStore(db), registry: runtimeRegistry, driver }, async input => {
+  expect(input.instructions).toContain("Mandatory receipt evidence.");
+  return { followsPolicy: true, reason: "Verified fixture rule", estimatedCostUsd: 0 };
+ });
  expect(report.results[0], JSON.stringify(report.results)).toMatchObject({ status: "passed" });
  expect((await getPublishStatus(owner.id, a.id)).canPublish).toBe(true);
- await updatePolicy(owner.id, "organization", org.id, 1, { ...(org.policy as object), mandatoryRules: ["Retain an explicit receipt citation."] });
+ await updatePolicy(owner.id, "organization", org.id, 2, { ...(org.policy as object), mandatoryRules: ["Retain an explicit receipt citation."] });
  expect((await getPublishStatus(owner.id, a.id)).canPublish).toBe(false);
  await expect(assertWorkspaceConfig((await getAgent(owner.id, a.id)).config, false)).rejects.toThrow("governance_policy_changed");
  await changeMember(owner.id, org.id, { email: member.email, remove: true });
