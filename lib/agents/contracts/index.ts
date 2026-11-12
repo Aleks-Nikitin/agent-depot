@@ -1,4 +1,5 @@
 import { RoutingPolicySchema, RoutingDecisionSchema } from "@/lib/routing/policy";
+import { GitHubBindingSchema } from "@/lib/connectors/contracts";
 import { z } from "zod";
 import { ModelProfileIdSchema } from "../profiles";
 
@@ -21,6 +22,7 @@ export const AgentConfigSchema = z.object({
   modelProfile: ModelProfileIdSchema.optional(),
   fallbackModelProfile: ModelProfileIdSchema.optional(),
   routing: RoutingPolicySchema.optional(),
+  github: GitHubBindingSchema.optional(),
   enabledTools: z.array(z.string().min(1).max(100)).max(10),
   requireWriteApproval: z.boolean().default(true),
   limits: LimitsSchema.default(() => LimitsSchema.parse({})),

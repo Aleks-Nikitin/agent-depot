@@ -50,6 +50,7 @@ function buildConfig(
     ownerId,
     version,
     ...(input.routing ? { routing: input.routing } : {}),
+    ...(input.github ? { github: input.github } : {}),
     name: input.name,
     instructions: input.instructions,
     model: "gemini",
@@ -152,7 +153,8 @@ export async function updateAgent(
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
-    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? AgentConfigSchema.parse(current.config).routing });
+    const previous = AgentConfigSchema.parse(current.config);
+    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? previous.routing, github: input.github ?? previous.github });
     assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
@@ -179,6 +181,7 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     modelProfile: sourceConfig.modelProfile,
     fallbackModelProfile: sourceConfig.fallbackModelProfile,
     routing: sourceConfig.routing,
+    github: sourceConfig.github,
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
     requireWriteApproval: sourceConfig.requireWriteApproval,
@@ -225,6 +228,7 @@ export async function rollbackAgent(
       modelProfile: targetConfig.modelProfile,
       fallbackModelProfile: targetConfig.fallbackModelProfile,
       routing: targetConfig.routing,
+      github: targetConfig.github,
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
       requireWriteApproval: targetConfig.requireWriteApproval,

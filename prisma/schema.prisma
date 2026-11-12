@@ -499,3 +499,34 @@ model RoutingBenchmark {
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   @@index([ownerId, agentId, createdAt])
 }
+
+// Credentials never enter agent configurations, runtime events or exports.
+model GitHubConnection {
+  id String @id @default(uuid())
+  ownerId String @unique
+  repository String
+  credential String
+  revision Int @default(1)
+  allowWrites Boolean @default(false)
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Intent is durable before an external effect; unknown outcomes are never retried.
+model ConnectorOperation {
+  key String @id
+  ownerId String
+  connectionId String
+  revision Int
+  repository String
+  runId String
+  inputHash String
+  input Json
+  status String @default("unknown")
+  result Json?
+  reason String?
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  @@index([ownerId, createdAt])
+}
