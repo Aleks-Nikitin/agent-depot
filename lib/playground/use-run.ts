@@ -24,6 +24,7 @@ export type UseRun = {
   decide: (approvalId: string, approved: boolean) => Promise<RunOutcome | null>;
   /** Reload a run by id (refresh / history), fetching only events we are missing. */
   replay: (runId: string) => Promise<void>;
+  cancel: () => Promise<void>;
   reset: () => void;
 };
 
@@ -60,20 +61,31 @@ export function useRun(client?: RunClient): UseRun {
 
   const start = useCallback((agentId: string, message: string) => {
     setTrace(emptyTrace);
-    return guard(signal => runClient.startRun({ agentId, message }, onEvent, signal));
+    return guard(signal => runClient.startRun({ agentId, message, onAccepted: runId => setTrace(t => ({ ...t, runId, status: "running" })) }, onEvent, signal));
   }, [guard, runClient, onEvent]);
 
   const decide = useCallback((approvalId: string, approved: boolean) =>
     guard(signal => runClient.respondToApproval(approvalId, approved, onEvent, signal)), [guard, runClient, onEvent]);
 
   const replay = useCallback(async (runId: string) => {
-    const current = traceRef.current;
-    const after = current.runId === runId && !current.missingSequences.length ? current.lastSequence : 0;
-    try {
+    await guard(async signal => {
+      const current = traceRef.current;
+      const after = current.runId === runId && !current.missingSequences.length ? current.lastSequence : 0;
       const history = await runClient.loadRun(runId, after);
-      setTrace(t => addEvents(t.runId === runId ? t : emptyTrace, history.events));
-    } catch (e) {
-      setError(e instanceof RunClientError ? e.code : "runtime_unavailable");
+      signal.throwIfAborted();
+      setTrace(t => ({ ...addEvents(t.runId === runId ? t : emptyTrace, history.events), runId, status: history.status }));
+      if (history.status === "running" && runClient.followRun) {
+        const cursor = history.events.at(-1)?.sequence ?? after;
+        return runClient.followRun(runId, onEvent, signal, cursor);
+      }
+      return { runId, status: history.status, response: history.response, stopReason: history.stopReason, approvalId: null };
+    });
+  }, [runClient, guard, onEvent]);
+
+  const cancel = useCallback(async () => {
+    const id = traceRef.current.runId;
+    if (id && runClient.cancelRun) {
+      try { await runClient.cancelRun(id); } catch { setError("cancellation_unavailable"); }
     }
   }, [runClient]);
 
@@ -82,5 +94,5 @@ export function useRun(client?: RunClient): UseRun {
     setTrace(emptyTrace); setError(null); setInterrupted(false); setBusy(false);
   }, []);
 
-  return { trace, busy, interrupted, error, start, decide, replay, reset };
+  return { trace, busy, interrupted, error, start, decide, replay, cancel, reset };
 }

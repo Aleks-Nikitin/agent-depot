@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { waitForEvaluation } from "@/lib/jobs/client";
 import { Backlit } from "@/components/ui/backlit";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,10 +26,10 @@ const barTone: Record<TestCaseStatus, string> = {
 
 type Meta = Pick<TestRunReport, "version" | "ranAt" | "durationMs" | "costUsd">;
 
-export function SummaryCard({ version, statuses, meta, now, busy, canPublish, lockReason, publishing, onRun, onPublish }: {
+export function SummaryCard({ version, statuses, meta, now, busy, canPublish, lockReason, publishing, loadingPack, onRun, onPublish }: {
   version: number; statuses: TestCaseStatus[]; meta: Meta | null; now: number; busy: boolean; canPublish: boolean;
   /** Why Publish is locked; shown as the button tooltip. */
-  lockReason: string; publishing?: boolean;
+  lockReason: string; publishing?: boolean; loadingPack?: boolean;
   onRun: () => void; onPublish: () => void;
 }) {
   const passed = statuses.filter(s => s === "passed").length;
@@ -59,8 +60,8 @@ export function SummaryCard({ version, statuses, meta, now, busy, canPublish, lo
           </div>
         )}
         <div className="flex flex-wrap gap-3 sm:ml-auto">
-          <Button onClick={onRun} disabled={busy || !statuses.length}><PlayIcon size={14} /> {busy ? "Running…" : "Run tests"}</Button>
-          <Button variant="primary" onClick={onPublish} disabled={!canPublish || busy || publishing} title={canPublish ? undefined : lockReason}
+          <Button onClick={onRun} disabled={busy || loadingPack || publishing || !statuses.length}><PlayIcon size={14} /> {busy ? "Running…" : "Run tests"}</Button>
+          <Button variant="primary" onClick={onPublish} disabled={!canPublish || busy || loadingPack || publishing} title={canPublish ? undefined : lockReason}
             aria-describedby={canPublish ? undefined : "publish-lock-reason"}>
             {!canPublish && <LockIcon size={14} />} {publishing ? "Publishing…" : `Publish v${version}`}
           </Button>
@@ -77,6 +78,8 @@ const apiErrors: Record<string, string> = {
   agent_not_found: "This agent no longer exists.",
   test_case_limit: "An agent can have up to five saved test cases.",
   test_not_found: "This test case no longer exists. Refresh the page.",
+  regression_pack_requires_support_tools: "Save knowledge_search and create_ticket as permitted tools in the builder before adding the support suite.",
+  regression_pack_needs_four_slots: "The suite has four cases. Make room within the five-case limit, then try again. Existing tests have been kept.",
 };
 
 /** JSON request to the test case routes; maps 400 issues to field errors and other failures to a form message. */
@@ -93,19 +96,23 @@ async function request(url: string, method: "POST" | "PATCH" | "DELETE", body?: 
 }
 
 /** Evaluation Lab screen state: cases, the latest results, running a suite, and the publish gate. */
-export function TestsScreen({ agent, initialCases, report, quality, tools, now, persist, publish }: {
+export function TestsScreen({ agent, initialCases, report, quality, tools, now, persist, publish, initialJobId }: {
   agent: AgentHeaderData; initialCases: TestCase[]; report: TestRunReport | null; quality: QualitySummary; tools: readonly string[]; now: number;
   /** true: saves go through /api (database); false: fixture mode, changes stay on this page. */
   persist: boolean;
   /** Server publish gate (database mode). Only a saved, passing TestRun for this version unlocks Publish. */
   publish?: PublishStatus;
+  initialJobId?: string;
 }) {
   const router = useRouter();
   const [cases, setCases] = useState(initialCases);
   const [publishing, setPublishing] = useState(false);
   const [results, setResults] = useState<Record<string, TestResult>>(() => Object.fromEntries((report?.results ?? []).map(r => [r.testCaseId, r])));
   const [running, setRunning] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [requestBusy, setBusy] = useState(false);
+  const [activeJob, setActiveJob] = useState(initialJobId ?? null);
+  const busy = requestBusy || !!activeJob;
+  const [loadingPack, setLoadingPack] = useState(false);
   const [meta, setMeta] = useState<Meta | null>(report);
   const [clock, setClock] = useState(now);
   const [filter, setFilter] = useState<"all" | "failing" | "passed">("all");
@@ -115,6 +122,19 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   const [editing, setEditing] = useState<TestCase | null>(null);
   const formRef = useRef<HTMLTextAreaElement>(null);
 
+  useEffect(() => {
+    if (!activeJob) return;
+    const controller = new AbortController();
+    void waitForEvaluation(activeJob, controller.signal, status => {
+      setNotice(status === "queued" ? "Evaluation queued. The background worker will start it." : "Evaluation running in the background. You can leave and return to this page.");
+    }).then(report => {
+      setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
+      setMeta(report); setClock(Date.now()); setNotice("Evaluation results saved. Review failures and database changes below.");
+    }).catch(error => { if (!controller.signal.aborted) { setActionError(error instanceof Error ? error.message : "Evaluation unavailable"); setNotice(null); } })
+      .finally(() => { if (!controller.signal.aborted) { setBusy(false); setActiveJob(null); router.refresh(); } });
+    return () => controller.abort();
+  }, [activeJob, router]);
+
   const statusOf = (c: TestCase): TestCaseStatus => running === c.id ? "running" : results[c.id]?.status ?? "pending";
   const statuses = cases.map(statusOf);
   const failingCases = cases.filter(c => ["failed", "error"].includes(statusOf(c)));
@@ -122,7 +142,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   const allPassed = cases.length > 0 && passedCount === cases.length;
   const version = publish?.agentVersion ?? agent.version;
   // Database mode trusts only the server gate; fixture mode keeps the local all-passed rule.
-  const canPublish = publish ? publish.canPublish : allPassed;
+  const canPublish = publish ? publish.canPublish && allPassed : allPassed;
   const lockReason = publish ? publish.reason
     : !cases.length ? "Add at least one test before publishing"
     : failingCases.length ? `${failingCases.length} test${failingCases.length === 1 ? "" : "s"} failing` : "Every test must pass first";
@@ -132,29 +152,49 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   }), [cases, results, running, filter]);
 
   const runTests = async () => {
+    if (loadingPack || publishing) return;
+    let enqueued = false;
     setBusy(true); setResults({}); setDismissed(false); setNotice(null); setActionError(null);
     try {
       let report: TestRunReport;
       if (persist) {
-        const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/tests/run`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: "{}" });
         if (!response.ok) { const error = await response.json(); throw new Error(error.error ?? "evaluation_failed"); }
+        if (response.status === 202) { const receipt = await response.json() as { jobId: string }; enqueued = true; setActiveJob(receipt.jobId); return; }
         report = await response.json();
       } else report = await simulateTestRun(version, cases, () => {});
       setResults(Object.fromEntries(report.results.map(result => [result.testCaseId, result])));
       setMeta(report); setClock(Date.now());
-      if (persist) { setNotice("Test results saved for this agent version. Write tools were automatically denied."); router.refresh(); }
+      if (persist) { setNotice("Test results saved for this agent version. Domain actions use disposable test data."); router.refresh(); }
     } catch (error) { setActionError(error instanceof Error ? error.message.replaceAll("_", " ") : "Could not run tests."); }
-    finally { setRunning(null); setBusy(false); }
+    finally { setRunning(null); if (!enqueued) setBusy(false); }
+  };
+
+  const addRegressionPack = async () => {
+    if (!persist || busy || publishing || loadingPack) return;
+    setLoadingPack(true); setNotice(null); setActionError(null);
+    try {
+      const res = await request(`/api/agents/${encodeURIComponent(agent.id)}/tests/regression-pack`, "POST", {});
+      if (!res.ok) { setActionError(res.errors.form ?? "Could not add the regression suite."); return; }
+      const installed = (res.data as { testCases: TestCase[] }).testCases;
+      const changed = installed.length !== cases.length || installed.some(test => !cases.some(current => current.id === test.id));
+      setCases(installed);
+      if (changed) { setResults({}); setMeta(null); setEditing(null); setDismissed(false); }
+      setNotice(changed ? "Support regression suite ready. Run tests to evaluate all saved cases using the configured model. Provider usage is billed as usual."
+        : "The support regression suite is already added. Existing results have been kept.");
+      router.refresh();
+    } finally { setLoadingPack(false); }
   };
 
   /** Calls the existing publish route; the button is only enabled when the server gate allows it. */
   const publishNow = async () => {
+    if (busy || loadingPack) return;
     setNotice(null); setActionError(null);
     if (!persist) { setNotice(`All tests pass. Publishing v${version} is not connected in fixture mode.`); return; }
     setPublishing(true);
     try {
       const res = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/publish`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedVersion: version }),
       });
       if (!res.ok) throw new Error(String(res.status));
       setNotice(`Published v${version}.`);
@@ -173,6 +213,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
 
   /** Saves through the API when persisted (database mode); otherwise keeps the change on this page only. */
   const saveCase = async (input: TestCaseInput): Promise<FieldErrors | null> => {
+    if (busy || loadingPack || publishing) return { form: "Wait for the current action to finish before saving a test." };
     setActionError(null);
     if (!persist) {
       const saved: TestCase = { ...input, id: editing?.id ?? `local-${Date.now()}` };
@@ -189,6 +230,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
     return null;
   };
   const deleteCase = async (id: string) => {
+    if (busy || loadingPack || publishing) return;
     setActionError(null);
     if (persist) {
       const res = await request(`/api/tests/${encodeURIComponent(id)}`, "DELETE");
@@ -203,13 +245,26 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <SummaryCard version={version} statuses={statuses} meta={meta} now={clock} busy={busy} canPublish={canPublish}
-        lockReason={lockReason} publishing={publishing} onRun={runTests} onPublish={publishNow} />
+        lockReason={lockReason} publishing={publishing} loadingPack={loadingPack} onRun={runTests} onPublish={publishNow} />
       {notice && <p role="status" className="rounded-xl border border-(--ad-success-border) bg-(--ad-success-bg) px-5 py-3 text-sm text-(--ad-success)">{notice}</p>}
       {actionError && <p role="alert" className="rounded-xl border border-(--ad-error-border) bg-(--ad-error-bg) px-5 py-3 text-sm text-(--ad-error)">{actionError}</p>}
+      {activeJob && <Button size="sm" onClick={async () => {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(activeJob)}/cancel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        if (!response.ok) setActionError("Could not request cancellation.");
+      }}>Stop evaluation</Button>}
       {!busy && !dismissed && !canPublish && (
         <PublishBanner reason={lockReason} publishedVersion={agent.publishedVersion}
           firstFailingId={failingCases[0]?.id} onDismiss={() => setDismissed(true)} />
       )}
+
+      {persist && <Card className="flex flex-wrap items-center gap-4 p-5">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold">Support regression suite</h2>
+          <p className="mt-1 text-sm text-(--ad-muted)">Four adversarial checks: instructions hidden in retrieved documents, unauthorized tool use, duplicate tickets, and false success claims.</p>
+          <p className="mt-2 text-xs text-(--ad-muted)">Requires knowledge search and ticket creation. Adds missing cases without replacing existing tests. Adding is free; Run tests uses your configured provider.</p>
+        </div>
+        <Button disabled={busy || loadingPack || publishing} onClick={addRegressionPack}>{loadingPack ? "Adding…" : "Add support suite"}</Button>
+      </Card>}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
         <section aria-labelledby="test-cases-title" className="min-w-0 space-y-4">
@@ -225,7 +280,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
                 </button>
               ))}
             </div>
-            <Button variant="dashed" className="ad-mono sm:ml-auto" onClick={() => {
+            <Button variant="dashed" disabled={busy || loadingPack || publishing} className="ad-mono sm:ml-auto" onClick={() => {
               setEditing(null);
               setTimeout(() => { formRef.current?.focus(); formRef.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, 0);
             }}>
@@ -234,7 +289,7 @@ export function TestsScreen({ agent, initialCases, report, quality, tools, now, 
           </div>
           {visible.map(c => (
             <TestCaseCard key={c.id} testCase={c} status={statusOf(c)} result={results[c.id]} editing={editing?.id === c.id}
-              onEdit={busy ? undefined : () => editCase(c)} onDelete={busy ? undefined : () => deleteCase(c.id)} />
+              onEdit={busy || loadingPack || publishing ? undefined : () => editCase(c)} onDelete={busy || loadingPack || publishing ? undefined : () => deleteCase(c.id)} />
           ))}
           {!visible.length && <p className="rounded-xl border border-dashed border-(--ad-border) py-10 text-center text-sm text-(--ad-muted)">No test cases here.</p>}
         </section>

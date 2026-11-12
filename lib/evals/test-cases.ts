@@ -2,10 +2,15 @@ import { io } from "next/cache";
 import { ZodError, z } from "zod";
 import { configError } from "@/lib/agents/library/http";
 import { getDb } from "@/lib/db/prisma";
+import { EvaluationSeedSchema } from "./isolation/fixtures";
+import { StateAssertionsSchema } from "./state/schema";
 import { TestCaseInputSchema, TestSourceSchema } from "./schema";
 import type { TestCase } from "./types";
 import type { Prisma } from "../../generated/prisma/client";
 import { HttpError } from "@/lib/auth/errors";
+import { AgentConfigSchema } from "@/lib/agents/contracts";
+import { artifactHash } from "@/lib/agents/releases/fingerprint";
+import { supportRegressionCases, SUPPORT_REGRESSION_TOOLS } from "./regression-pack";
 
 export async function lockTestAgent(tx: Prisma.TransactionClient, ownerId: string, agentId: string) {
   const result = await tx.agent.updateMany({ where: { id: agentId, ownerId }, data: { testRevision: { increment: 1 } } });
@@ -18,10 +23,10 @@ export async function lockTestAgent(tx: Prisma.TransactionClient, ownerId: strin
 /** "fixtures" keeps the original fake test cases for UI work without a database. */
 export const TESTS_SOURCE = "db" as "db" | "fixtures";
 
-type Row = { id: string; input: string; mustCall: string[]; mustNotCall: string[]; mustContain: string[]; useGrader: boolean; expectedBehavior?: string | null; source: string };
+type Row = { fixtures?: unknown; stateAssertions?: unknown; id: string; input: string; mustCall: string[]; mustNotCall: string[]; mustContain: string[]; useGrader: boolean; expectedBehavior?: string | null; source: string };
 
 function toTestCase(r: Row): TestCase {
-  return { id: r.id, input: r.input, mustCall: r.mustCall, mustNotCall: r.mustNotCall, mustContain: r.mustContain,
+  return { fixtures: EvaluationSeedSchema.parse(r.fixtures ?? {}), stateAssertions: StateAssertionsSchema.parse(r.stateAssertions ?? []), id: r.id, input: r.input, mustCall: r.mustCall, mustNotCall: r.mustNotCall, mustContain: r.mustContain,
     useGrader: r.useGrader, ...(r.expectedBehavior ? { expectedBehavior: r.expectedBehavior } : {}), source: TestSourceSchema.catch("user").parse(r.source) };
 }
 
@@ -52,6 +57,23 @@ export async function createTestCase(ownerId: string, agentId: string, input: un
   });
 }
 
+/** Atomically add the reviewed pack; retries preserve IDs/evidence and never replace user cases. */
+export async function installSupportRegressionPack(ownerId: string, agentId: string): Promise<TestCase[]> {
+  return getDb().$transaction(async tx => {
+    await lockTestAgent(tx, ownerId, agentId);
+    const agent = await tx.agent.findUniqueOrThrow({ where: { id: agentId } });
+    const config = AgentConfigSchema.parse(agent.config);
+    if (SUPPORT_REGRESSION_TOOLS.some(tool => !config.enabledTools.includes(tool))) throw new HttpError(409, "regression_pack_requires_support_tools");
+    const rows = await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const signature = (definition: Omit<TestCase, "id">) => artifactHash({ ...TestCaseInputSchema.parse(definition), fixtures: definition.fixtures ?? {}, stateAssertions: definition.stateAssertions ?? [] });
+    const existing = new Set(rows.map(row => { const { id, ...definition } = toTestCase(row); void id; return signature(definition); }));
+    const missing = supportRegressionCases().filter(definition => !existing.has(signature(definition)));
+    if (rows.length + missing.length > 5) throw new HttpError(409, "regression_pack_needs_four_slots");
+    for (const data of missing) await tx.testCase.create({ data: { agentId, ...data } });
+    return (await tx.testCase.findMany({ where: { agentId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map(toTestCase);
+  });
+}
+
 /** Partial update: omitted fields keep their saved values; the merged result is validated as a whole. */
 export async function updateTestCase(ownerId: string, id: string, input: unknown): Promise<TestCase> {
   const patch = z.record(z.string(), z.unknown()).parse(input);
@@ -62,6 +84,7 @@ export async function updateTestCase(ownerId: string, id: string, input: unknown
     if (!row) throw new Error("test_not_found");
     const data = TestCaseInputSchema.parse({ input: row.input, mustCall: row.mustCall, mustNotCall: row.mustNotCall,
       mustContain: row.mustContain, useGrader: row.useGrader, ...(row.expectedBehavior ? { expectedBehavior: row.expectedBehavior } : {}),
+      fixtures: row.fixtures, stateAssertions: row.stateAssertions,
       source: TestSourceSchema.catch("user").parse(row.source), ...patch });
     return toTestCase(await tx.testCase.update({ where: { id }, data }));
   });

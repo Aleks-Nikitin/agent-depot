@@ -5,7 +5,8 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { AlertIcon, CheckIcon, EditIcon, PlayIcon, SparkIcon, TrashIcon, XIcon } from "@/components/ui/icons";
 import { Chip, Pill } from "@/components/ui/pill";
-import { WRITE_TOOLS } from "@/lib/fixtures/runs";
+import { evaluationOutcome, OUTCOME_LABELS } from "@/lib/evals/outcome";
+import { StateDiff } from "./state-diff";
 import type { TestCase, TestCaseStatus, TestResult } from "@/lib/evals/types";
 import { formatDuration } from "@/lib/runs/format";
 
@@ -15,7 +16,11 @@ const sourceLabel: Record<TestCase["source"], { text: string; icon: ReactNode }>
   template: { text: "From template", icon: <CheckIcon size={13} /> },
 };
 
-export function TestStatusPill({ status }: { status: TestCaseStatus }) {
+export function TestStatusPill({ status, result }: { status: TestCaseStatus; result?: TestResult }) {
+  if (result && status !== "running" && status !== "pending") {
+    const outcome = evaluationOutcome(result);
+    return <Pill tone={outcome === "pass" ? "success" : "error"} icon={outcome === "pass" ? <CheckIcon size={12} /> : <AlertIcon size={12} />}>{OUTCOME_LABELS[outcome]}</Pill>;
+  }
   switch (status) {
     case "passed": return <Pill tone="success" icon={<CheckIcon size={12} />} className="ad-mono">Passed</Pill>;
     case "failed": return <Pill tone="error" icon={<XIcon size={12} />} className="ad-mono">Failed</Pill>;
@@ -31,7 +36,6 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const failing = status === "failed" || status === "error";
-  const gatedWrite = c.mustCall.some(t => WRITE_TOOLS.has(t));
   const remove = async () => {
     setDeleting(true);
     try { await onDelete?.(); } finally { setDeleting(false); setConfirming(false); }
@@ -42,7 +46,7 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
       <div className="p-5">
         <div className="flex items-start gap-3">
           <h3 className="min-w-0 flex-1 text-[15px] font-semibold">&ldquo;{c.input}&rdquo;</h3>
-          <TestStatusPill status={status} />
+          <TestStatusPill status={status} result={result} />
           {onEdit && (
             <button type="button" onClick={onEdit} aria-label="Edit test case" aria-pressed={editing}
               className="grid h-6 w-6 place-items-center rounded-md text-(--ad-muted) hover:bg-(--ad-raised) hover:text-(--ad-text)">
@@ -69,7 +73,7 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
           {c.mustNotCall.map(t => <Chip key={`n-${t}`}>must not call {t}</Chip>)}
           {c.mustContain.map(w => <Chip key={`w-${w}`}>contains &ldquo;{w}&rdquo;</Chip>)}
           {c.useGrader && <Chip tone="model" dot>Gemini grader: follows policy</Chip>}
-          {gatedWrite && <Chip tone="approval">approval auto-rejected in tests</Chip>}
+          {c.mustCall.includes("create_ticket") && <Chip tone="approval">writes disposable test tickets</Chip>}
         </div>
         <p className="mt-3 flex flex-wrap items-center gap-x-2 text-[13px] text-(--ad-muted)">
           {sourceLabel[c.source].icon} Source: {sourceLabel[c.source].text}
@@ -83,7 +87,7 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
         <div className="border-t border-(--ad-error-border) bg-(--ad-error-bg)/50 p-5">
           <div className="flex items-center justify-between gap-3">
             <span className="ad-mono text-[11px] font-medium tracking-wider text-(--ad-error) uppercase">
-              {status === "error" ? "Not evaluated" : "Why it failed"}
+              {status === "error" ? OUTCOME_LABELS[evaluationOutcome(result)] : "Why it failed"}
             </span>
             {result.runId && <ButtonLink href={`/runs/${result.runId}`} size="sm" className="ad-mono">View trace</ButtonLink>}
           </div>
@@ -100,6 +104,7 @@ export function TestCaseCard({ testCase: c, status, result, onEdit, onDelete, ed
           )}
         </div>
       )}
+      {result && <StateDiff evidence={result.stateEvidence} />}
     </article>
   );
 }

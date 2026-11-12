@@ -1,0 +1,2 @@
+export const MAX_CONVERSATION_TURNS = 10;
+export const MAX_CONVERSATION_BYTES = 48_000;

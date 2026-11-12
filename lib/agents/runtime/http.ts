@@ -48,7 +48,7 @@ export function httpError(error: unknown): Response {
   if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
   const reason = error instanceof Error ? error.message : "";
   if (["agent_not_found", "run_not_found", "approval_not_found"].includes(reason)) return Response.json({ error: "not_found" }, { status: 404 });
-  if (["approval_unavailable", "run_unavailable"].includes(reason)) return Response.json({ error: reason }, { status: 409 });
+  if (["approval_unavailable", "approval_call_mismatch", "run_unavailable"].includes(reason)) return Response.json({ error: reason }, { status: 409 });
   return Response.json({ error: "runtime_unavailable" }, { status: 503 });
 }
 export function streamRun(request: Request, task: (signal: AbortSignal, emit: (event: RunStep) => void) => Promise<unknown>,

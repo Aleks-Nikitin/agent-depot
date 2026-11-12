@@ -95,13 +95,20 @@ model Agent {
   testRevision     Int            @default(0)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
-  versions         AgentVersion[]
+  versions         AgentDraft[]
+  releases         AgentRelease[]
+  conversations    ConversationSession[]
+  servingReleaseId String?
+  servingGeneration Int @default(0)
+  servingRelease   AgentRelease? @relation("ServingRelease", fields: [servingReleaseId], references: [id], onDelete: SetNull)
+  routingBenchmarks RoutingBenchmark[]
+  repairCases      RepairCase[]
   testCases        TestCase[]     // NEW
 
   @@index([ownerId])
 }
 
-model AgentVersion {
+model AgentDraft {
   id        String   @id @default(uuid())
   agentId   String
   version   Int
@@ -110,14 +117,21 @@ model AgentVersion {
   createdAt DateTime @default(now())
   agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
+  @@map("AgentVersion")
   @@unique([agentId, version])
   @@index([agentId])
 }
 
 model AgentRun {
+  workspaceSlot WorkspaceSlot?
   id             String     @id @default(uuid())
   ownerId        String
   agentId        String
+  releaseId      String?
+  sessionId      String?
+  turn           Int?
+  executionKey   String? @unique
+  input          String?
   configSnapshot Json
   status         RunStatus  @default(running)
   sequence       Int        @default(0)
@@ -132,6 +146,7 @@ model AgentRun {
   finishedAt     DateTime?
   events         RunEvent[]
   approvals      Approval[]
+  modelAttempts  ModelAttempt[]
   metrics        RuntimeMetric[]
   recordedEmails RecordedEmail[]
 
@@ -181,6 +196,7 @@ model Approval {
   toolCallId String
   toolId     String
   input      Json
+  inputHash  String?
   status     ApprovalStatus @default(pending)
   expiresAt  DateTime
   decidedAt  DateTime?
@@ -226,6 +242,9 @@ model RecordedEmail {
 
 // NEW
 model TestCase {
+  regressionOrigin RegressionOrigin?
+  fixtures Json @default("{}")
+  stateAssertions Json @default("[]")
   id          String   @id @default(uuid())
   agentId     String
   input       String
@@ -244,6 +263,9 @@ model TestCase {
 
 // NEW
 model TestRun {
+  purpose String @default("certification")
+  jobId        String? @unique
+  manifest EvaluationManifest?
   id           String   @id @default(uuid())
   agentId      String
   agentVersion Int
@@ -251,10 +273,229 @@ model TestRun {
   passed       Boolean
   passedCount  Int
   totalCount   Int
+  configHash   String?
+  providerSettings Json?
   testsFingerprint String?
   status       String   @default("completed")
   finishedAt   DateTime?
   createdAt    DateTime @default(now())
 
   @@index([agentId, agentVersion, createdAt])
+}
+
+// Application receipts, separate from Graphile's vendor queue tables.
+model ExecutionJob {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  requestKey String @unique
+  requestHash String
+  kind String
+  payload Json
+  status String @default("queued")
+  runId String?
+  testRunId String?
+  cancelRequested Boolean @default(false)
+  result Json?
+  reason String?
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  @@index([ownerId, agentId, status])
+}
+
+// Receipt and local effect commit in the same transaction.
+model LocalOperation {
+  key String @id
+  ownerId String
+  toolId String
+  inputHash String
+  result Json
+  createdAt DateTime @default(now())
+  @@index([ownerId])
+}
+
+// One private container per owner; owner-scoped resources retain their existing IDs.
+model Workspace {
+  policy Json @default("{\"allowedTools\":[\"knowledge_search\",\"sales_lookup\",\"order_lookup\",\"create_ticket\",\"send_email\",\"google_shopping\",\"google_news\",\"read_webpage\"],\"dailyBudgetMicros\":1000000,\"maxConcurrentRuns\":4,\"limits\":{\"maxModelCalls\":10,\"maxWriteCalls\":5,\"maxToolCalls\":20,\"maxEstimatedCostUsd\":1,\"maxOutputTokens\":2048,\"timeoutMs\":120000}}")
+  slots WorkspaceSlot[]
+  days WorkspaceDay[]
+  id        String   @id @default(uuid())
+  ownerId   String   @unique
+  name      String   @default("My workspace")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WorkspaceSlot {
+  key String @id
+  ownerId String
+  runId String? @unique
+  active Boolean @default(true)
+  acquiredAt DateTime @default(now())
+  workspace Workspace @relation(fields: [ownerId], references: [ownerId], onDelete: Cascade)
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@index([ownerId, active])
+}
+
+model WorkspaceDay {
+  ownerId String
+  day String
+  heldMicros Int @default(0)
+  workspace Workspace @relation(fields: [ownerId], references: [ownerId], onDelete: Cascade)
+  charges WorkspaceCharge[]
+  @@id([ownerId, day])
+}
+
+model WorkspaceCharge {
+  key String @id
+  ownerId String
+  day String
+  kind String
+  reservedMicros Int
+  chargedMicros Int
+  status String @default("reserved")
+  createdAt DateTime @default(now())
+  bucket WorkspaceDay @relation(fields: [ownerId, day], references: [ownerId, day], onDelete: Cascade)
+  @@index([ownerId, day])
+}
+
+// Provider metadata only. Private prompts and tool payloads stay in checkpoints.
+model ModelAttempt {
+  id              String   @id @default(uuid())
+  runId           String
+  attempt         Int
+  modelStep       Int
+  profile         String
+  provider        String
+  model           String
+  status          String   @default("reserved")
+  reservedCostUsd Float
+  inputTokens     Float?
+  outputTokens    Float?
+  estimatedCostUsd Float?
+  reason          String?
+  durationMs      Int?
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  run             AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, attempt])
+}
+
+// Approval artifacts are append-only; updates are rejected by a database trigger.
+model AgentRelease {
+  id String @id @default(uuid())
+  agentId String
+  draftId String
+  version Int
+  config Json
+  configHash String
+  providerSettings Json
+  evidence Json
+  evidenceHash String
+  approvedBy String
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  servingAgents Agent[] @relation("ServingRelease")
+  @@index([agentId, createdAt])
+}
+
+model ConversationSession {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  draftId String
+  releaseId String?
+  version Int
+  config Json
+  providerSettings Json
+  turnCount Int @default(0)
+  activeRunId String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, agentId])
+}
+
+// Owned domain orders; no external shop integration is implied.
+model WorkspaceOrder {
+  id String @id @default(uuid())
+  ownerId String
+  orderId String
+  status String
+  totalCents Int
+  currency String @default("USD")
+  createdAt DateTime @default(now())
+  @@unique([ownerId, orderId])
+}
+
+model EvaluationManifest {
+  testRunId String @id
+  hash String
+  payload Json
+  createdAt DateTime @default(now())
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+}
+
+// Reviewed reproduction provenance. Runtime checkpoints are deliberately excluded.
+model RegressionOrigin {
+  id String @id @default(uuid())
+  ownerId String
+  runId String @unique
+  testCaseId String @unique
+  sourceHash String
+  definitionHash String
+  evidence Json
+  createdAt DateTime @default(now())
+  testCase TestCase @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  @@index([ownerId])
+}
+
+// Application review/operation receipts; graph checkpoints use a separate vendor schema.
+model RepairCase {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  sourceRunId String
+  testCaseId String
+  requestKey String @unique
+  graphVersion Int @default(1)
+  status String @default("queued")
+  baseVersion Int
+  baseHash String
+  manifestHash String
+  targetManifestHash String
+  testsFingerprint String
+  proposalHash String
+  payload Json
+  expiresAt DateTime
+  approved Boolean?
+  reviewerId String?
+  decidedAt DateTime?
+  appliedVersion Int?
+  childJobId String? @unique
+  childJobIds String[] @default([])
+  reason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, createdAt])
+}
+
+model RoutingBenchmark {
+  id String @id @default(uuid())
+  ownerId String
+  agentId String
+  requestKey String @unique
+  status String @default("queued")
+  repeats Int
+  baseManifestHash String
+  payload Json
+  childJobIds String[] @default([])
+  activeJobId String? @unique
+  reason String?
+  createdAt DateTime @default(now())
+  finishedAt DateTime?
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@index([ownerId, agentId, createdAt])
 }

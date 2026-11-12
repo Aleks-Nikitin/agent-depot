@@ -4,6 +4,34 @@ Implementation documentation for the agent runtime engine: execution flow, tool 
 
 See [Runtime metrics](runtime-metrics.md) for optional Tiger Data setup, monitoring query contracts and sponsor integration ownership.
 
+## LangChain adapter update
+
+New service-created runs now execute through LangChain `createAgent` with PostgreSQL graph checkpoints, while preserving the existing event and service contracts. Run `npm run runtime:setup` after application migrations. See [adapter setup, profiles, tracing and verification limits](langchain-runtime.md). The older execution-loop/AI SDK descriptions below are historical: the bespoke orchestration loop has been removed. AI SDK drafting and grading remain in use. Old non-graph checkpoints remain readable but cannot resume effects.
+
+## Immutable releases and conversations
+
+Serving execution now resolves an approved immutable release, independently of editable drafts. Playground supports revision-pinned conversations and release rollback is available in Versions. See [release gates, APIs, session limits and verification boundaries](releases-and-conversations.md). The older descriptions below of publication as a version flag are superseded by this implementation.
+
+## Isolated evaluation state
+
+Evaluation domain actions now use disposable, per-case fixture state in a dedicated database on the same PostgreSQL instance. Live workspace tickets and orders are outside that write path. See [setup, scoped repositories, teardown and verified limits](isolated-evaluations.md). Earlier descriptions below of blanket evaluation write denial are superseded for supported domain tools.
+
+## Outcome evidence and publication
+
+Cases can seed fixtures and assert exact counts, record fields and forbidden mutations. Persisted diffs link to immutable evaluation manifests; promotion verifies current dependencies and recomputes outcome checks. See [case API, safety defaults and certification boundaries](outcome-evidence.md). Earlier descriptions of attempted-tool/text checks as sufficient publication evidence are superseded.
+
+The Evaluation Lab now shows distinct behavior/provider/grader outcomes and visual database diffs. Owners can add a four-case support adversarial suite without replacing existing cases. See [running the suite, inspecting failures and verification limits](evaluation-lab.md).
+
+## Background execution
+
+Run, approval and evaluation endpoints enqueue durable work for a standalone Graphile Worker process. Browser viewers reconnect to persisted event sequences and can explicitly request a stop. See [worker setup, 202 receipt contracts, cancellation, local effect receipts and interruption limits](background-execution.md). Earlier request-owned streaming descriptions are superseded for these endpoints.
+
+## Workspace limits
+
+Shared PostgreSQL reservations now enforce daily estimated model spend and admitted run concurrency across workers. Saved and executing agent configurations must fit the parent workspace tool/limit policy; production guests cannot start paid AI work. See [defaults, UTC accounting, policy changes and verification boundaries](workspace-policy.md).
+
+GitHub Actions now defines a local-PostgreSQL verification lane for main and pull requests, with no paid model credentials. See [CI commands, offline network guard and hosted verification limits](continuous-integration.md).
+
 ## Current implementation status
 
 The core runtime feature is implemented: configuration loading, trusted tool registration, bounded multi-step execution, durable events, approval pause/resume, reusable evaluation execution with writes denied, and validated agent drafting. Two distinct configurations and approved/rejected writes have passed real Gemini smoke checks. Terminal metrics persist atomically on PostgreSQL; optional hypertables and hourly aggregates passed isolated TimescaleDB tests.

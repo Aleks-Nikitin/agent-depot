@@ -1,3 +1,5 @@
+import { RoutingPolicySchema } from "@/lib/routing/policy";
+import { ModelProfileIdSchema } from "../profiles";
 import { z } from "zod";
 import { LimitsSchema } from "@/lib/agents/contracts";
 import { TestCaseInputSchema } from "@/lib/evals/schema";
@@ -8,6 +10,9 @@ export const AgentInputSchema = z
     name: z.string().trim().min(1).max(100),
     instructions: z.string().trim().min(1).max(8000),
     workspaceName: z.string().trim().min(1).max(80).optional(),
+    modelProfile: ModelProfileIdSchema.optional(),
+    fallbackModelProfile: ModelProfileIdSchema.optional(),
+    routing: RoutingPolicySchema.optional(),
     model: z.literal("gemini").default("gemini"),
     enabledTools: z.array(z.string().min(1).max(100)).max(10).default([]),
     requireWriteApproval: z.boolean().default(true),
@@ -22,5 +27,5 @@ export const RollbackRequestSchema = z
   .strict();
 
 export const PublishRequestSchema = z
-  .object({ testsPassed: z.boolean().optional() })
+  .object({ testsPassed: z.boolean().optional(), expectedVersion: z.number().int().positive().optional() })
   .strict();

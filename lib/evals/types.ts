@@ -1,7 +1,13 @@
+import type { StateEvidence } from "./state/evidence";
+import type { EvaluationSeed } from "./isolation/fixtures";
+import type { StateAssertion } from "./state/schema";
+
 export type TestSource = "gemini" | "user" | "template";
 
 export type TestCase = {
   id: string;
+  fixtures?: EvaluationSeed;
+  stateAssertions?: StateAssertion[];
   input: string;
   mustCall: string[];
   mustNotCall: string[];
@@ -13,8 +19,12 @@ export type TestCase = {
 };
 
 export type TestCaseStatus = "pending" | "running" | "passed" | "failed" | "error";
+export type EvaluationOutcome = "pass" | "behavior_failure" | "provider_unavailable" | "grader_unavailable" | "evaluation_unavailable";
 
 export type TestResult = {
+  /** Separate infrastructure availability from observed agent behavior. Optional for historical reports. */
+  outcome?: EvaluationOutcome;
+  stateEvidence?: StateEvidence;
   testCaseId: string;
   status: "passed" | "failed" | "error";
   /** Human-readable, e.g. "Answer did not contain 'not in our policy'". */
@@ -26,6 +36,7 @@ export type TestResult = {
 };
 
 export type TestRunReport = {
+  manifestHash?: string;
   version: number;
   ranAt: string;
   durationMs: number | null;

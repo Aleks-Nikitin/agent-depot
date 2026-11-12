@@ -6,7 +6,7 @@ import { deriveTrace } from "./reduce-events";
 // The replaceable browser boundary. The mock and the real HTTP client both implement this,
 // and every playground component talks only to it. Never import server-only runAgent() here.
 
-export type StartRunRequest = { agentId: string; message: string };
+export type StartRunRequest = { agentId: string; message: string; onAccepted?: (runId: string) => void };
 
 export type RunOutcome = {
   runId: string | null;
@@ -28,6 +28,8 @@ export type RunHistory = z.infer<typeof RunHistorySchema>;
 export type OnEvent = (event: RunStep) => void;
 
 export interface RunClient {
+  followRun?(runId: string, onEvent: OnEvent, signal?: AbortSignal, afterSequence?: number): Promise<RunOutcome>;
+  cancelRun?(runId: string): Promise<void>;
   startRun(request: StartRunRequest, onEvent: OnEvent, signal?: AbortSignal): Promise<RunOutcome>;
   respondToApproval(approvalId: string, approved: boolean, onEvent: OnEvent, signal?: AbortSignal): Promise<RunOutcome>;
   /** Replays a stored run; pass afterSequence to fetch only what is missing. */

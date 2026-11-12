@@ -1,9 +1,9 @@
+import { EvaluationSeedSchema } from "./isolation/fixtures";
+import { StateAssertionsSchema } from "./state/schema";
 import { z } from "zod";
 
-// Browser-safe tool ids for test cases. The runtime registry (lib/integrations/demo-tools.ts) imports the
-// database client, so it cannot be loaded in the form; schema.test.ts fails if the registry gains a tool
-// that is missing here.
-export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage"] as const;
+// Browser-safe tool IDs for test forms; schema.test.ts keeps this list aligned with the trusted runtime.
+export const REGISTERED_TOOL_IDS = ["knowledge_search", "sales_lookup", "order_lookup", "create_ticket", "send_email", "google_shopping", "google_news", "read_webpage"] as const;
 /** Planned integrations (Dev 4): allowed in tests before they are registered. */
 export const PLANNED_TOOL_IDS = [] as const;
 export const TOOL_IDS = [...REGISTERED_TOOL_IDS, ...PLANNED_TOOL_IDS] as const;
@@ -14,6 +14,8 @@ export type ToolId = z.infer<typeof ToolIdSchema>;
 export const TestSourceSchema = z.enum(["gemini", "template", "user"]);
 
 export const TestCaseInputSchema = z.object({
+  fixtures: EvaluationSeedSchema.optional(),
+  stateAssertions: StateAssertionsSchema.optional(),
   input: z.string().trim().min(1, "Enter the question to test").max(8000, "Keep the question under 8,000 characters"),
   mustCall: z.array(ToolIdSchema).max(10).default([]),
   mustNotCall: z.array(ToolIdSchema).max(10).default([]),
@@ -22,6 +24,7 @@ export const TestCaseInputSchema = z.object({
   expectedBehavior: z.string().trim().min(1).max(2000).optional(),
   source: TestSourceSchema.default("user"),
 }).strict().superRefine((value, ctx) => {
+  if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 2_000_000) ctx.addIssue({ code: "custom", path: ["fixtures"], message: "Case state exceeds the 2 MB limit" });
   for (const tool of value.mustCall) {
     if (value.mustNotCall.includes(tool)) {
       ctx.addIssue({ code: "custom", path: ["mustNotCall"], message: `"${tool}" can't be in both Must call and Must not call` });

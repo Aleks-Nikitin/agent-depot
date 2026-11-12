@@ -1,0 +1,67 @@
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agent_depot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_TARGET: local
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/agent_depot
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: ci-only-disposable-auth-secret-never-used-for-deployment
+      RUNTIME_MODEL_ID: gemini-3.1-flash-lite
+      RUNTIME_INPUT_USD_PER_MILLION: "0.10"
+      RUNTIME_OUTPUT_USD_PER_MILLION: "0.40"
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      OPENAI_API_KEY: ""
+      SERPAPI_API_KEY: ""
+      LANGCHAIN_TRACING_V2: "false"
+      LANGSMITH_API_KEY: ""
+      LANGCHAIN_API_KEY: ""
+      NEXT_TELEMETRY_DISABLED: "1"
+      TEST_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:deploy
+      - run: npm run runtime:setup
+      - run: npm run worker:setup
+      - name: Prepare isolated evaluation database
+        run: |
+          touch .env
+          npm run eval:setup -- --local
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+        env:
+          BETTER_AUTH_URL: https://ci.example.test

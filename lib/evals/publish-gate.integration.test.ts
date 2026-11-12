@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, expect, it } from "vitest";
 import { getDb } from "../db/prisma";
 import { supportAgent } from "../agents/fixtures";
-import { testFingerprint } from "./fingerprint";
+import { runEvaluation } from "./runner";
+import { PrismaRunStore } from "../agents/storage/prisma-store";
+import { runtimeRegistry } from "../integrations/runtime-tools";
+import { graphCheckpointer } from "../agents/runtime/checkpointer";
 import { getPublishStatus, latestTestRun } from "./publish-gate";
 
 // Runs against the local Postgres (npm run test:integration). Uses its own agent and removes everything afterwards.
@@ -13,7 +16,16 @@ let minutes = 0;
 const at = () => new Date(Date.UTC(2026, 9, 25, 12, minutes++)); // strictly increasing createdAt
 
 async function run(agentVersion: number, passedCount: number, totalCount = 5) {
-  return db.testRun.create({ data: { agentId, agentVersion, results: [], testsFingerprint: testFingerprint(await db.testCase.findMany({ where: { agentId } })), passed: passedCount === totalCount, passedCount, totalCount, createdAt: at() } });
+  void totalCount;
+  await db.agent.update({ where: { id: agentId }, data: { version: agentVersion, config: { ...supportAgent, id: agentId, version: agentVersion } } });
+  let index = 0;
+  try {
+    await runEvaluation("demo", agentId, undefined, { store: new PrismaRunStore(db), registry: runtimeRegistry, driver: {
+      key: "publish-gate-fixture", estimate: () => 0.00001, turn: async () => ({ text: index++ < passedCount ? "passed" : "failed", calls: [], messages: [], inputTokens: 1, outputTokens: 1 }),
+    } });
+    const saved = await db.testRun.findFirstOrThrow({ where: { agentId, agentVersion }, orderBy: { createdAt: "desc" } });
+    return await db.testRun.update({ where: { id: saved.id }, data: { createdAt: at() } });
+  } finally { await db.agent.update({ where: { id: agentId }, data: { version: 2, config: { ...supportAgent, id: agentId, version: 2 } } }); }
 }
 
 beforeEach(async () => {
@@ -21,11 +33,15 @@ beforeEach(async () => {
   await db.testCase.deleteMany({ where: { agentId } });
   await db.agent.deleteMany({ where: { id: agentId } });
   await db.agent.create({ data: { id: agentId, ownerId: "demo", name: "Publish gate IT", version: 2, config: { ...supportAgent, id: agentId, version: 2 } } });
-  await db.testCase.create({ data: { agentId, input: "Can I return a jacket?", mustCall: ["knowledge_search"] } });
+  for (const version of [1, 2]) await db.agentDraft.create({ data: { agentId, version, name: "Publish gate IT", config: { ...supportAgent, id: agentId, version } } });
+  for (let i = 0; i < 5; i++) await db.testCase.create({ data: { agentId, input: `Can I return jacket ${i}?`, mustContain: ["passed"] } });
 });
 afterAll(async () => {
   await db.testRun.deleteMany({ where: { agentId } }); // TestRun has no relation, so delete explicitly
   await db.agent.deleteMany({ where: { id: agentId } });
+  const runs = await db.agentRun.findMany({ where: { agentId }, select: { id: true } });
+  for (const run of runs) await (await graphCheckpointer()).deleteThread(run.id);
+  await db.agentRun.deleteMany({ where: { agentId } });
   await db.$disconnect();
 });
 

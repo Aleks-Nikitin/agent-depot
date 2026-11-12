@@ -4,6 +4,7 @@ import type { RunStatus } from "@/lib/runs/format";
 
 export type ModelItem = {
   kind: "model"; id: string; sequence: number; step: number; status: "running" | "done" | "failed";
+  model?: string; provider?: string; recovery?: "retrying" | "using_fallback"; failureReason?: string;
   usage: Usage | null; tokens: number | null; durationMs: number | null;
 };
 export type ToolItem = {
@@ -74,6 +75,7 @@ export function deriveTrace(input: RunStep[]): Trace {
   const tools = new Map<string, ToolItem>();
   const approvals = new Map<string, ApprovalItem>();
   let model: ModelItem | null = null;
+  let recovery: ModelItem["recovery"];
   let modelStartedAt: string | null = null;
   let completed: Extract<RunStep, { type: "run_completed" }> | null = null;
   let pausedAt: string | null = null;
@@ -97,15 +99,17 @@ export function deriveTrace(input: RunStep[]): Trace {
       case "run_started": agentId = e.payload.agentId; break;
       case "model_started":
         model = { kind: "model", id: e.eventId, sequence: e.sequence, step: e.payload.step, status: "running",
-          usage: null, tokens: null, durationMs: null };
+          usage: null, tokens: null, durationMs: null, model: e.payload.model, provider: e.payload.provider, recovery };
+        recovery = undefined;
         modelStartedAt = e.timestamp; items.push(model); break;
       case "model_finished":
         if (!model || model.status === "done") {
           model = { kind: "model", id: e.eventId, sequence: e.sequence, step: 0, status: "running", usage: null, tokens: null, durationMs: null };
           items.push(model); modelStartedAt = null;
         }
-        model.status = "done"; model.usage = e.payload; model.tokens = usageTokens(e.payload);
+        model.status = e.payload.failed ? "failed" : "done"; model.failureReason = e.payload.reason; model.usage = e.payload; model.tokens = usageTokens(e.payload);
         model.durationMs = modelStartedAt ? elapsed(modelStartedAt, e.timestamp) : null; break;
+      case "model_recovery": recovery = e.payload.action; break;
       case "tool_requested": tool(e, e.payload); break;
       case "tool_started": tool(e, e.payload).authorization = e.payload.authorization; tool(e, e.payload).status = "running"; toolStartedAt.set(e.payload.toolCallId, e.timestamp); break;
       case "tool_finished": {
@@ -200,10 +204,11 @@ export function approvalState(item: ApprovalItem, now: number = Date.now()): App
 export function describeModelStep(items: TraceItem[], index: number): string {
   const m = items[index];
   if (m?.kind !== "model") return "";
-  if (m.status === "running") return "Waiting for Gemini’s response…";
+  if (m.status === "running") return m.recovery === "using_fallback" ? "Using the approved fallback provider…"
+    : m.recovery === "retrying" ? "Retrying the model request…" : "Waiting for the model’s response…";
   if (m.status === "failed") {
     const outcome = items.find((item): item is OutcomeItem => item.kind === "outcome");
-    return describeReason(outcome?.reason ?? "execution_failed");
+    return describeReason(m.failureReason ?? outcome?.reason ?? "execution_failed");
   }
   const after: TraceItem[] = [];
   for (let i = index + 1; i < items.length && items[i].kind !== "model"; i++) after.push(items[i]);

@@ -9,7 +9,7 @@ const StatusSchema = z.enum(["running", "waiting_approval", "paused", "completed
 const QuerySchema = z.object({
   agentId: z.string().trim().min(1).max(100).optional(),
   status: StatusSchema.optional(),
-  source: z.enum(["playground", "test"]).default("playground"),
+  source: z.enum(["playground", "test", "serving", "interactive"]).default("interactive"),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().trim().min(1).max(100).optional(),
 }).strict();

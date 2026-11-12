@@ -1,15 +1,8 @@
 import { RunRequestSchema } from "@/lib/agents/contracts";
-import { authorize, httpError, readBody, streamRun } from "@/lib/agents/runtime/http";
-import { loadAgent, runtimeServices } from "@/lib/agents/runtime/services";
-import { runAgent } from "@/lib/agents/runtime/run-agent";
-
+import { authorize, httpError, readBody } from "@/lib/agents/runtime/http";
+import { enqueueRun } from "@/lib/jobs/queue";
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  try {
-    const ownerId = await authorize(request);
-    const { message } = await readBody(request, RunRequestSchema);
-    const { id } = await context.params;
-    const config = await loadAgent(id, ownerId);
-    const services = runtimeServices();
-    return streamRun(request, (signal, onEvent) => runAgent({ config, ownerId, message }, { ...services, signal, onEvent }));
+  try { const ownerId = await authorize(request); const { message } = await readBody(request, RunRequestSchema);
+    return Response.json(await enqueueRun(ownerId, (await context.params).id, message, request.headers.get("Idempotency-Key") ?? ""), { status: 202 });
   } catch (error) { return httpError(error); }
 }

@@ -10,6 +10,7 @@ const tabs = [
   { segment: "builder", label: "Builder", path: "" },
   { segment: "playground", label: "Playground", path: "/playground" },
   { segment: "tests", label: "Tests", path: "/tests" },
+  { segment: "routing", label: "Routing", path: "/routing" },
   { segment: "versions", label: "Versions", path: "/versions" },
 ] as const;
 
@@ -17,7 +18,7 @@ export function AgentTabs({ agentId }: { agentId: string }) {
   const pathname = usePathname();
   const current = pathname.split("/")[3] ?? "builder";
   return (
-    <nav aria-label="Agent sections" className="flex rounded-lg border border-(--ad-border) bg-(--ad-bg) p-1">
+    <nav aria-label="Agent sections" className="flex overflow-x-auto rounded-lg border border-(--ad-border) bg-(--ad-bg) p-1">
       {tabs.map(t => {
         const isActive = current === t.segment;
         return (

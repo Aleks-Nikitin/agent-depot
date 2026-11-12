@@ -39,6 +39,8 @@ The old bearer path is only available with `RUNTIME_ALLOW_DEMO_TOKEN=true`, an e
 
 ## Guest access
 
+Production now blocks paid drafting, execution, approval continuations and evaluation for anonymous users at the server boundary. Development guests retain owned execution under shared workspace limits. Public previews and owned resource isolation remain available. See [current workspace policy and spend controls](workspace-policy.md); the unrestricted production-guest description below is historical.
+
 `POST /api/auth/sign-in/anonymous` creates a distinct anonymous User and session. Each guest can create, edit, duplicate, version and execute agents, approve their own writes, and read their own metrics through the same authorization path as a registered account. No role or paywall restriction is added. Runtime tool permissions and per-run cost/step/time limits still apply.
 
 Guests share neither accounts nor a `demo` owner ID. Losing the cookie, session expiry or signing out removes access to that guest workspace; there is no recovery credential or guest-to-account data transfer in this milestone. Guest data is not automatically deleted on logout, and no retention cleanup job is included. Playground, saved tests and history now use the integrated runtime and PostgreSQL; their owner isolation is unchanged.

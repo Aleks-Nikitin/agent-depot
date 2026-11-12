@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { afterAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getDb } from "../../db/prisma";
 import { supportAgent, salesAgent } from "../fixtures";
@@ -13,8 +13,16 @@ import type { AgentConfig, RunStep } from "../contracts";
 const db = getDb();
 const store = new PrismaRunStore(db);
 const created: string[] = [];
+let originalWorkspacePolicy: import("@/generated/prisma/client").Prisma.JsonValue;
+beforeAll(async () => {
+  const { ensureWorkspace } = await import("../workspace");
+  const row = await ensureWorkspace(db, "demo"); originalWorkspacePolicy = row.policy;
+  const policy = (await import("@/lib/workspaces/policy")).WorkspacePolicySchema.parse(row.policy);
+  await db.workspace.update({ where: { ownerId: "demo" }, data: { policy: { ...policy, allowedTools: [...policy.allowedTools, "second_write"] } } });
+});
 afterAll(async () => {
   await db.agentRun.deleteMany({ where: { id: { in: created } } });
+  await db.workspace.update({ where: { ownerId: "demo" }, data: { policy: originalWorkspacePolicy! } });
   await db.$disconnect();
 });
 function answer(text = "Fixture answer"): ModelTurn {
@@ -134,9 +142,15 @@ it("records a conservative reservation when a provider hangs or fails", async ()
   for (const hanging of [false, true]) {
     const model: ModelDriver = { key: "test", estimate: (i, o) => (i + o) / 1_000_000,
       turn: vi.fn(async () => { if (hanging) return new Promise<ModelTurn>(() => {}); throw new Error("provider-secret-must-not-leak"); }) };
-    const { result, events } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 250 } }, model);
+    const { result, events } = await execute({ ...supportAgent, limits: { ...supportAgent.limits, timeoutMs: 1000 } }, model);
+    expect(model.turn).toHaveBeenCalledOnce();
     expect(result.status).toBe("failed");
-    expect(result.usage.estimatedCostUsd).toBeGreaterThan(0);
+    expect(result.usage.estimatedCostUsd).toBeNull();
+    expect((await store.loadRun(result.runId, "demo")).state.budgetSpentUsd).toBeGreaterThan(0);
+    const attempt = await db.modelAttempt.findFirstOrThrow({ where: { runId: result.runId } });
+    expect(attempt.reservedCostUsd).toBeGreaterThan(0);
+    expect(attempt.status).toBe("failed");
+    expect((await store.loadRun(result.runId, "demo")).status).toBe("failed");
     expect(result.usage.inputTokens).toBeNull();
     expect(JSON.stringify(events)).not.toContain("provider-secret");
   }
@@ -149,7 +163,7 @@ it("stops after reported usage exhausts the budget and before any tool executes"
 });
 it("does not dispatch a model request when saving its checkpoint fails", async () => {
   const failing = new PrismaRunStore(db);
-  vi.spyOn(failing, "saveCheckpoint").mockRejectedValueOnce(new Error("storage failure"));
+  vi.spyOn(failing, "reserveModelAttempt").mockRejectedValueOnce(new Error("storage failure"));
   const model = driver([answer()]);
   const result = await runAgent({ config: supportAgent, ownerId: "demo", message: "test" }, {
     store: failing, registry: registry().tools, driver: model,

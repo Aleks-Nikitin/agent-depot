@@ -1,4 +1,6 @@
+import { RoutingPolicySchema, RoutingDecisionSchema } from "@/lib/routing/policy";
 import { z } from "zod";
+import { ModelProfileIdSchema } from "../profiles";
 
 export const LimitsSchema = z.object({
   maxModelCalls: z.number().int().min(1).max(10).default(5),
@@ -16,6 +18,9 @@ export const AgentConfigSchema = z.object({
   instructions: z.string().min(1).max(8000),
   workspaceName: z.string().trim().min(1).max(80).optional(),
   model: z.literal("gemini"),
+  modelProfile: ModelProfileIdSchema.optional(),
+  fallbackModelProfile: ModelProfileIdSchema.optional(),
+  routing: RoutingPolicySchema.optional(),
   enabledTools: z.array(z.string().min(1).max(100)).max(10),
   requireWriteApproval: z.boolean().default(true),
   limits: LimitsSchema.default(() => LimitsSchema.parse({})),
@@ -37,8 +42,11 @@ const envelope = z.object({
 const call = z.object({ toolCallId: z.string(), toolId: z.string(), input: z.unknown() });
 export const RunStepSchema = z.discriminatedUnion("type", [
   envelope.extend({ type: z.literal("run_started"), payload: z.object({ agentId: z.string() }) }),
-  envelope.extend({ type: z.literal("model_started"), payload: z.object({ step: z.number().int() }) }),
-  envelope.extend({ type: z.literal("model_finished"), payload: UsageSchema }),
+  envelope.extend({ type: z.literal("model_started"), payload: z.object({ step: z.number().int(), profile: z.string().optional(), provider: z.string().optional(), model: z.string().optional(), routing: RoutingDecisionSchema.optional() }) }),
+  envelope.extend({ type: z.literal("model_finished"), payload: UsageSchema.extend({ failed: z.boolean().optional(), reason: z.string().optional() }) }),
+  envelope.extend({ type: z.literal("model_recovery"), payload: z.object({
+    action: z.enum(["retrying", "using_fallback"]), reason: z.string(), profile: z.string(), provider: z.string(), model: z.string(),
+  }) }),
   envelope.extend({ type: z.literal("tool_requested"), payload: call }),
   envelope.extend({ type: z.literal("tool_started"), payload: call.extend({ authorization: z.enum(["read", "human", "policy"]).optional() }) }),
   envelope.extend({ type: z.literal("tool_finished"), payload: z.object({ toolCallId: z.string(), toolId: z.string(), output: z.unknown(), durationMs: z.number().nonnegative() }) }),

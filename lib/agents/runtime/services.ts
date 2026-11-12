@@ -2,7 +2,9 @@ import { getDb } from "../../db/prisma";
 import { runtimeRegistry } from "../../integrations/runtime-tools";
 import { AgentConfigSchema } from "../contracts";
 import { PrismaRunStore } from "../storage/prisma-store";
-import { createGoogleDriver } from "./model";
+import { createGoogleDriver, type ModelDriver } from "./model";
+import { createProfileDriver } from "./provider-model";
+import { graphCheckpointer } from "./checkpointer";
 
 export async function loadAgent(id: string, ownerId: string) {
   const row = await getDb().agent.findFirst({ where: { id, ownerId } });
@@ -11,6 +13,13 @@ export async function loadAgent(id: string, ownerId: string) {
   if (config.id !== row.id || config.ownerId !== ownerId || config.version !== row.version) throw new Error("invalid_agent_record");
   return config;
 }
-export function runtimeServices() {
+function legacyRuntimeServices() {
   return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: createGoogleDriver() };
+}
+
+export function runtimeServices(options: { live?: boolean } = {}) {
+  void options; // Legacy callers may pass live; graph execution always resolves a real provider.
+  return { store: new PrismaRunStore(getDb()), registry: runtimeRegistry, driver: { key: "deferred", estimate: (input: number, output: number) => createGoogleDriver().estimate(input, output), turn: async () => { throw new Error("profile_not_resolved"); } } satisfies ModelDriver,
+    driverForConfig: createProfileDriver, checkpointer: graphCheckpointer,
+    legacyDriver: () => legacyRuntimeServices().driver };
 }

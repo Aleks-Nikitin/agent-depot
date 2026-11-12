@@ -1,0 +1,1 @@
+ALTER TABLE "RepairCase" ADD COLUMN "childJobIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

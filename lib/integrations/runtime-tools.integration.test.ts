@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { liveDomainRepository } from "../agents/domain/prisma-repository";
 import { randomUUID } from "node:crypto";
 import { afterAll, expect, it } from "vitest";
 import { getDb } from "../db/prisma";
@@ -14,7 +15,7 @@ const db = getDb();
 const ownerId = `tool-integration-${randomUUID()}`;
 const runs: string[] = [];
 const config = { ...supportAgent, ownerId, enabledTools: [...runtimeRegistry.keys()] };
-const context = { ownerId, runId: "read-only", toolCallId: "read", idempotencyKey: "read", signal: AbortSignal.timeout(10_000) };
+const context = { domain: liveDomainRepository(ownerId), ownerId, runId: "read-only", toolCallId: "read", idempotencyKey: "read", signal: AbortSignal.timeout(10_000) };
 afterAll(async () => {
   await db.demoTicket.deleteMany({ where: { ownerId } });
   await db.knowledgeDocument.deleteMany({ where: { ownerId } });
@@ -32,7 +33,7 @@ it("uses the shared registry and workspace knowledge without leaking another own
   const absent = await dispatchTool({ config, registry: runtimeRegistry, toolId: "knowledge_search", input: { query: "unused jackets returns" }, context });
   expect(absent).toMatchObject({ matches: [], sample: false });
   const other = await dispatchTool({ config: { ...config, ownerId: "another-owner" }, registry: runtimeRegistry,
-    toolId: "knowledge_search", input: { query }, context: { ...context, ownerId: "another-owner" } });
+    toolId: "knowledge_search", input: { query }, context: { ...context, domain: liveDomainRepository("another-owner"), ownerId: "another-owner" } });
   expect(other).toMatchObject({ matches: [] });
   const sales = await dispatchTool({ config, registry: runtimeRegistry, toolId: "sales_lookup", input: { query: "top 3 products" }, context });
   expect(sales).toHaveProperty("rows.length", 3);

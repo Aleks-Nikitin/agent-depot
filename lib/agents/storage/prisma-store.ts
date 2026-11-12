@@ -1,10 +1,25 @@
+import { randomUUID } from "node:crypto";
+import { HttpError } from "@/lib/auth/errors";
+import { artifactHash } from "../releases/fingerprint";
+import { MAX_CONVERSATION_TURNS } from "../sessions/limits";
+import { approvalHash } from "../runtime/approval-hash";
 import type { PrismaClient, Prisma } from "../../../generated/prisma/client";
 import { AgentConfigSchema, RunStepSchema, type AgentConfig, type EventInput, type RunStep } from "../contracts";
 import { CheckpointSchema, type Checkpoint, type PendingCall } from "../runtime/state";
+import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
+import { acquireSlot, reserveCharge, settleCharge } from "@/lib/workspaces/budget";
 
 function json(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
+export type AttemptReservation = {
+  attempt: number; modelStep: number; profile: string; provider: string; model: string; reservedCostUsd: number;
+};
+export type AttemptSettlement = {
+  status: "succeeded" | "failed" | "usage_unknown"; inputTokens: number | null; outputTokens: number | null;
+  estimatedCostUsd: number | null; reason: string | null; durationMs: number;
+};
+export type RunBinding = { releaseId?: string; executionKey: string; input: string; sessionId?: string; expectedTurn?: number; artifactHash?: string };
 type Tx = Prisma.TransactionClient;
 async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventInput): Promise<RunStep> {
   const run = await tx.agentRun.update({ where: { id: runId, ownerId }, data: { sequence: { increment: 1 } } });
@@ -15,11 +30,31 @@ async function insertEvent(tx: Tx, runId: string, ownerId: string, event: EventI
 export class PrismaRunStore {
   constructor(readonly db: PrismaClient) {}
 
-  async createRun(config: AgentConfig, checkpoint: Checkpoint) {
-    return this.db.agentRun.create({ data: {
-      ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
-      agentVersion: config.version, source: checkpoint.approvalMode === "deny" ? "test" : "playground",
-    } });
+  async createRun(config: AgentConfig, checkpoint: Checkpoint, binding?: RunBinding, transaction?: Tx) {
+    const create = async (tx: Tx) => {
+      const policy = await lockedPolicy(tx, config.ownerId, true); assertNarrowed(config, policy);
+      const id = randomUUID();
+      let turn: number | undefined;
+      if (binding?.sessionId) {
+        if (!Number.isInteger(binding.expectedTurn) || !binding.artifactHash) throw new HttpError(409, "conversation_artifact_mismatch");
+        const claimed = await tx.conversationSession.updateMany({ where: { id: binding.sessionId, ownerId: config.ownerId,
+          agentId: config.id, turnCount: binding.expectedTurn, activeRunId: null, expiresAt: { gt: new Date() },
+          AND: { turnCount: { lt: MAX_CONVERSATION_TURNS } } }, data: { turnCount: { increment: 1 }, activeRunId: id } });
+        if (claimed.count !== 1) throw new HttpError(409, "conversation_busy_or_changed");
+        const session = await tx.conversationSession.findUniqueOrThrow({ where: { id: binding.sessionId } });
+        if (binding.artifactHash !== artifactHash({ config: session.config, providerSettings: session.providerSettings })
+          || binding.artifactHash !== artifactHash({ config, providerSettings: checkpoint.providerSettings })) throw new HttpError(409, "conversation_artifact_mismatch");
+        turn = session.turnCount;
+      }
+      const run = await tx.agentRun.create({ data: {
+        id, ownerId: config.ownerId, agentId: config.id, configSnapshot: json(config), checkpoint: json(checkpoint),
+        agentVersion: config.version, source: checkpoint.approvalMode === "deny" || checkpoint.domainScope?.kind === "evaluation" ? "test" : binding?.releaseId ? "serving" : "playground",
+        releaseId: binding?.releaseId, executionKey: binding?.executionKey, input: binding?.input, sessionId: binding?.sessionId, turn,
+      } });
+      await acquireSlot(tx, config.ownerId, `run:${id}`, policy, id);
+      return run;
+    };
+    return transaction ? create(transaction) : this.db.$transaction(create);
   }
   async loadRun(runId: string, ownerId: string) {
     const run = await this.db.agentRun.findFirst({ where: { id: runId, ownerId } });
@@ -35,33 +70,74 @@ export class PrismaRunStore {
     if (result.count !== 1) throw new Error("stale_checkpoint");
     return version + 1;
   }
+  async reserveModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: AttemptReservation) {
+    return this.db.$transaction(async tx => {
+      const policy = await lockedPolicy(tx, ownerId, true);
+      const run = await tx.agentRun.findFirstOrThrow({ where: { id: runId, ownerId } });
+      assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
+      await acquireSlot(tx, ownerId, `run:${runId}`, policy, runId);
+      await reserveCharge(tx, ownerId, `model:${runId}:${attempt.attempt}`, "model", attempt.reservedCostUsd, policy);
+      const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
+        data: { checkpoint: json(state), version: { increment: 1 } } });
+      if (updated.count !== 1) throw new Error("stale_checkpoint");
+      await tx.modelAttempt.create({ data: { runId, ...attempt } });
+      return version + 1;
+    });
+  }
+  async settleModelAttempt(runId: string, ownerId: string, version: number, state: Checkpoint, attempt: number, result: AttemptSettlement) {
+    return this.db.$transaction(async tx => {
+      await lockedPolicy(tx, ownerId);
+      const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
+        data: { checkpoint: json(state), version: { increment: 1 } } });
+      if (updated.count !== 1) throw new Error("stale_checkpoint");
+      const settled = await tx.modelAttempt.updateMany({ where: { runId, attempt, status: "reserved" },
+        data: { ...result, durationMs: Math.ceil(result.durationMs), finishedAt: new Date() } });
+      if (settled.count !== 1) throw new Error("attempt_unavailable");
+      await settleCharge(tx, ownerId, `model:${runId}:${attempt}`, result.estimatedCostUsd);
+      return version + 1;
+    });
+  }
   async pauseForApproval(runId: string, ownerId: string, version: number, state: Checkpoint, call: PendingCall) {
     return this.db.$transaction(async tx => {
       const updated = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { checkpoint: json(state), status: "waiting_approval", version: { increment: 1 } } });
       if (updated.count !== 1) throw new Error("stale_checkpoint");
-      const approval = await tx.approval.create({ data: { runId, ...call, input: json(call.input), expiresAt: new Date(Date.now() + 15 * 60_000) } });
+      await tx.workspaceSlot.updateMany({ where: { runId, ownerId }, data: { active: false } });
+      const approval = await tx.approval.create({ data: { runId, ...call, input: json(call.input), inputHash: approvalHash(ownerId, runId, call), expiresAt: new Date(Date.now() + 15 * 60_000) } });
       const event = await insertEvent(tx, runId, ownerId, { type: "approval_required", payload: {
         ...call, approvalId: approval.id, expiresAt: approval.expiresAt.toISOString(),
       } });
       return { approval, event, version: version + 1 };
     });
   }
-  async claimApproval(approvalId: string, ownerId: string, approved: boolean) {
-    return this.db.$transaction(async tx => {
+  async claimApproval(approvalId: string, ownerId: string, approved: boolean, transaction?: Tx) {
+    const claim = async (tx: Tx) => {
       const approval = await tx.approval.findFirst({ where: { id: approvalId, run: { ownerId } } });
       if (!approval) throw new Error("approval_not_found");
-      const claim = await tx.approval.updateMany({ where: { id: approvalId, status: "pending", expiresAt: { gt: new Date() } },
+      if (approval.status !== "pending" || approval.expiresAt.getTime() <= Date.now()) throw new Error("approval_unavailable");
+      const run = await tx.agentRun.findFirstOrThrow({ where: { id: approval.runId, ownerId } });
+      const state = CheckpointSchema.parse(run.checkpoint);
+      const policy = await lockedPolicy(tx, ownerId, true);
+      assertNarrowed(AgentConfigSchema.parse(run.configSnapshot), policy);
+      await acquireSlot(tx, ownerId, `run:${run.id}`, policy, run.id);
+      const call = { toolCallId: approval.toolCallId, toolId: approval.toolId, input: approval.input };
+      if (!approval.inputHash || approval.inputHash !== approvalHash(ownerId, run.id, call)
+        || !state.pending[0] || approvalHash(ownerId, run.id, state.pending[0]) !== approval.inputHash) {
+        throw new Error("approval_call_mismatch");
+      }
+      const claim = await tx.approval.updateMany({ where: { id: approvalId, inputHash: approval.inputHash,
+        input: { equals: json(approval.input) }, status: "pending", expiresAt: { gt: new Date() } },
         data: { status: approved ? "approved" : "rejected", decidedAt: new Date(), decidedBy: ownerId } });
       if (claim.count !== 1) throw new Error("approval_unavailable");
-      const runClaim = await tx.agentRun.updateMany({ where: { id: approval.runId, ownerId, status: "waiting_approval" },
+      const runClaim = await tx.agentRun.updateMany({ where: { id: approval.runId, ownerId, version: run.version, status: "waiting_approval" },
         data: { status: "running", version: { increment: 1 } } });
       if (runClaim.count !== 1) throw new Error("run_unavailable");
       const event = await insertEvent(tx, approval.runId, ownerId, { type: "approval_resolved", payload: {
         approvalId, approved, toolCallId: approval.toolCallId,
       } });
       return { approval, event };
-    });
+    };
+    return transaction ? claim(transaction) : this.db.$transaction(claim);
   }
   async finishRun(runId: string, ownerId: string, version: number, state: Checkpoint,
     status: "completed" | "blocked" | "failed", response: string | null, stopReason: string | null) {
@@ -70,11 +146,13 @@ export class PrismaRunStore {
       const result = await tx.agentRun.updateMany({ where: { id: runId, ownerId, version, status: "running" },
         data: { status, response, stopReason, checkpoint: json(state), finishedAt, version: { increment: 1 } } });
       if (result.count !== 1) throw new Error("stale_checkpoint");
+      await tx.workspaceSlot.updateMany({ where: { runId, ownerId }, data: { active: false } });
       const run = await tx.agentRun.findUniqueOrThrow({ where: { id: runId } });
+      if (run.sessionId) await tx.conversationSession.updateMany({ where: { id: run.sessionId, ownerId, activeRunId: runId }, data: { activeRunId: null } });
       const config = AgentConfigSchema.parse(run.configSnapshot);
       await tx.runtimeMetric.create({ data: {
         runId, finishedAt, ownerId, agentId: config.id, agentVersion: config.version,
-        modelProfile: state.driverKey, status, stopReason, activeMs: Math.ceil(state.activeMs),
+        modelProfile: state.activeProfile ?? state.activeDriverKey ?? state.driverKey, status, stopReason, activeMs: Math.ceil(state.activeMs),
         modelCalls: state.modelCalls, toolCalls: state.toolCalls, ...state.usage,
       } });
       return insertEvent(tx, runId, ownerId, status === "completed"
@@ -90,4 +168,4 @@ export class PrismaRunStore {
   }
 }
 // Structural interface also permits isolated fake stores in unit tests.
-export type RunStore = Pick<PrismaRunStore, "createRun" | "loadRun" | "appendEvent" | "saveCheckpoint" | "pauseForApproval" | "claimApproval" | "finishRun">;
+export type RunStore = Pick<PrismaRunStore, "createRun" | "loadRun" | "appendEvent" | "saveCheckpoint" | "reserveModelAttempt" | "settleModelAttempt" | "pauseForApproval" | "claimApproval" | "finishRun">;

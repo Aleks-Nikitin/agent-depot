@@ -1,8 +1,12 @@
+import { EvaluationSeedSchema } from "@/lib/evals/isolation/fixtures";
+import { StateAssertionsSchema } from "@/lib/evals/state/schema";
+import { ensureWorkspace } from "../workspace";
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
 import { AgentConfigSchema, type AgentConfig } from "@/lib/agents/contracts";
 import { AgentInputSchema, type AgentInput } from "./schema";
-import { readPublishStatus } from "@/lib/evals/publish-gate";
+import { promoteRelease } from "../releases/promote";
+import { lockedPolicy, assertNarrowed } from "@/lib/workspaces/policy";
 
 export type AgentSummary = {
   id: string;
@@ -28,6 +32,8 @@ export type AgentDetail = {
   version: number;
   published: boolean;
   publishedVersion: number | null;
+  servingReleaseId: string | null;
+  servingGeneration: number;
   config: AgentConfig;
   updatedAt: string;
   versions: AgentVersionSummary[];
@@ -43,9 +49,12 @@ function buildConfig(
     id,
     ownerId,
     version,
+    ...(input.routing ? { routing: input.routing } : {}),
     name: input.name,
     instructions: input.instructions,
     model: "gemini",
+    ...(input.modelProfile ? { modelProfile: input.modelProfile } : {}),
+    ...(input.fallbackModelProfile ? { fallbackModelProfile: input.fallbackModelProfile } : {}),
     enabledTools: input.enabledTools,
     requireWriteApproval: input.requireWriteApproval,
     ...(input.workspaceName ? { workspaceName: input.workspaceName } : {}),
@@ -59,6 +68,7 @@ function summary(row: {
   version: number;
   published: boolean;
   publishedVersion: number | null;
+  servingReleaseId: string | null;
   config: unknown;
   updatedAt: Date;
 }): AgentSummary {
@@ -67,8 +77,8 @@ function summary(row: {
     id: row.id,
     name: row.name,
     version: row.version,
-    published: row.published,
-    publishedVersion: row.publishedVersion,
+    published: row.servingReleaseId !== null,
+    publishedVersion: row.servingReleaseId ? row.publishedVersion : null,
     enabledTools: config.enabledTools,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -94,8 +104,10 @@ export async function getAgent(ownerId: string, id: string): Promise<AgentDetail
     id: row.id,
     name: row.name,
     version: row.version,
-    published: row.published,
-    publishedVersion: row.publishedVersion,
+    published: row.servingReleaseId !== null,
+    publishedVersion: row.servingReleaseId ? row.publishedVersion : null,
+    servingReleaseId: row.servingReleaseId,
+    servingGeneration: row.servingGeneration,
     config,
     updatedAt: row.updatedAt.toISOString(),
     versions: row.versions.map((v) => ({
@@ -103,7 +115,7 @@ export async function getAgent(ownerId: string, id: string): Promise<AgentDetail
       name: v.name,
       createdAt: v.createdAt.toISOString(),
       isCurrent: v.version === row.version,
-      isPublished: v.version === row.publishedVersion,
+      isPublished: row.servingReleaseId !== null && v.version === row.publishedVersion,
     })),
   };
 }
@@ -114,10 +126,12 @@ export async function createAgent(ownerId: string, raw: unknown): Promise<AgentD
   const config = buildConfig(id, ownerId, 1, input);
   const db = getDb();
   await db.$transaction(async (tx) => {
+    await ensureWorkspace(tx, ownerId);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.create({
       data: { id, ownerId, name: input.name, version: 1, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: 1, name: input.name, config },
     });
     if (input.testCases?.length) await tx.testCase.createMany({ data: input.testCases.map(test => ({ ...test, agentId: id })) });
@@ -138,12 +152,13 @@ export async function updateAgent(
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
     const nextVersion = current.version + 1;
-    const config = buildConfig(id, ownerId, nextVersion, input);
+    const config = buildConfig(id, ownerId, nextVersion, { ...input, routing: input.routing ?? AgentConfigSchema.parse(current.config).routing });
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
       data: { name: input.name, version: nextVersion, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: nextVersion, name: input.name, config },
     });
   });
@@ -161,20 +176,25 @@ export async function duplicateAgent(ownerId: string, id: string): Promise<Agent
     name,
     instructions: sourceConfig.instructions,
     model: "gemini",
+    modelProfile: sourceConfig.modelProfile,
+    fallbackModelProfile: sourceConfig.fallbackModelProfile,
+    routing: sourceConfig.routing,
     enabledTools: sourceConfig.enabledTools,
     limits: sourceConfig.limits,
     requireWriteApproval: sourceConfig.requireWriteApproval,
     workspaceName: sourceConfig.workspaceName,
   });
   await db.$transaction(async (tx) => {
+    await ensureWorkspace(tx, ownerId);
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.create({ data: { id: newId, ownerId, name, version: 1, config } });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: newId, version: 1, name, config },
     });
     const cases = await tx.testCase.findMany({ where: { agentId: id }, take: 5, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (cases.length) await tx.testCase.createMany({ data: cases.map(test => ({ agentId: newId, input: test.input,
       mustCall: test.mustCall, mustNotCall: test.mustNotCall, mustContain: test.mustContain, useGrader: test.useGrader,
-      expectedBehavior: test.expectedBehavior, source: test.source })) });
+      fixtures: EvaluationSeedSchema.parse(test.fixtures), stateAssertions: StateAssertionsSchema.parse(test.stateAssertions), expectedBehavior: test.expectedBehavior, source: test.source })) });
   });
   return getAgent(ownerId, newId);
 }
@@ -190,7 +210,7 @@ export async function rollbackAgent(
     if (locked.count !== 1) throw new Error("agent_not_found");
     const current = await tx.agent.findFirst({ where: { id, ownerId } });
     if (!current) throw new Error("agent_not_found");
-    const target = await tx.agentVersion.findUnique({
+    const target = await tx.agentDraft.findUnique({
       where: { agentId_version: { agentId: id, version: targetVersion } },
     });
     if (!target) throw new Error("version_not_found");
@@ -202,16 +222,20 @@ export async function rollbackAgent(
       name: target.name,
       instructions: targetConfig.instructions,
       model: "gemini",
+      modelProfile: targetConfig.modelProfile,
+      fallbackModelProfile: targetConfig.fallbackModelProfile,
+      routing: targetConfig.routing,
       enabledTools: targetConfig.enabledTools,
       limits: targetConfig.limits,
       requireWriteApproval: targetConfig.requireWriteApproval,
       workspaceName: targetConfig.workspaceName,
     });
+    assertNarrowed(config, await lockedPolicy(tx, ownerId));
     await tx.agent.update({
       where: { id },
       data: { name: target.name, version: nextVersion, config },
     });
-    await tx.agentVersion.create({
+    await tx.agentDraft.create({
       data: { agentId: id, version: nextVersion, name: target.name, config },
     });
   });
@@ -222,16 +246,10 @@ export async function publishAgent(
   ownerId: string,
   id: string,
   testsPassed?: boolean,
+  expectedVersion?: number,
 ): Promise<AgentDetail> {
   void testsPassed; // Legacy clients may send this; only stored server evidence is trusted.
-  const db = getDb();
-  await db.$transaction(async tx => {
-    const locked = await tx.agent.updateMany({ where: { id, ownerId }, data: { testRevision: { increment: 0 } } });
-    if (locked.count !== 1) throw new Error("agent_not_found");
-    const status = await readPublishStatus(tx, ownerId, id);
-    if (!status.canPublish) throw new Error("tests_not_passed");
-    await tx.agent.update({ where: { id }, data: { published: true, publishedVersion: status.agentVersion } });
-  });
+  await promoteRelease(ownerId, id, expectedVersion);
   return getAgent(ownerId, id);
 }
 
