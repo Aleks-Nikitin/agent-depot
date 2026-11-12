@@ -15,7 +15,7 @@ export async function verifyOutcomeEvidence(db: Pick<Prisma.TransactionClient, "
     if (!saved || !EvaluationManifestSchema.safeParse(saved.payload).success || artifactHash(saved.payload) !== saved.hash) return false;
     const workspacePolicy = WorkspacePolicySchema.parse((await db.workspace.findUniqueOrThrow({ where: { ownerId: config.ownerId } })).policy);
     assertNarrowed(config, workspacePolicy);
-    const current = buildEvaluationManifest({ config, cases, workspacePolicy, providerSettings: captureProviderSettings(config), knowledge: await evaluationKnowledge(db, config.ownerId), registry: runtimeRegistry });
+    const current = buildEvaluationManifest({ config, cases, workspacePolicy, providerSettings: captureProviderSettings(config), knowledge: await evaluationKnowledge(db, config.ownerId, config.id), registry: runtimeRegistry });
     if (current.hash !== saved.hash) return false;
     const ids = results.map(result => result.runId).filter((id): id is string => !!id);
     if (new Set(ids).size !== cases.length) return false;

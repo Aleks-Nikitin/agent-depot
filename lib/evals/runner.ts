@@ -36,7 +36,7 @@ export async function prepareEvaluation(ownerId: string, agentId: string, deps: 
     if (await tx.testRun.findFirst({ where: { agentId, status: "running", OR: [{ jobId: { not: null } }, { createdAt: { gt: cutoff } }] } })) throw new HttpError(409, "evaluation_running");
     await tx.testRun.updateMany({ where: { agentId, status: "running", jobId: null }, data: { status: "failed", passed: false } });
     const cases: TestCase[] = rows.map(row => ({ ...row, fixtures: EvaluationSeedSchema.parse(row.fixtures), stateAssertions: StateAssertionsSchema.parse(row.stateAssertions), source: TestSourceSchema.parse(row.source), expectedBehavior: row.expectedBehavior ?? undefined }));
-    const knowledge = await evaluationKnowledge(tx, ownerId);
+    const knowledge = await evaluationKnowledge(tx, ownerId, agentId);
     if (benchmark) {
       const base = buildEvaluationManifest({ config: AgentConfigSchema.parse(agent.config), cases, knowledge, providerSettings: captureProviderSettings(AgentConfigSchema.parse(agent.config)), workspacePolicy, registry: deps.registry });
       if (base.hash !== benchmark.baseManifestHash) throw new HttpError(409, "benchmark_dependencies_changed");

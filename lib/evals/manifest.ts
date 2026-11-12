@@ -4,14 +4,14 @@ import type { AgentConfig } from "@/lib/agents/contracts";
 import type { ProviderSettings } from "@/lib/agents/releases/provider-settings";
 import type { ToolRegistry } from "@/lib/agents/tools/registry";
 import type { Prisma } from "@/generated/prisma/client";
-import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
+import { visibleKnowledge } from "@/lib/knowledge/store";
 import { EvaluationFixturesSchema } from "./isolation/fixtures";
 import { testFingerprint } from "./fingerprint";
 import { effectiveAssertions, fixtureSnapshot } from "./state/check";
 import { TestCaseInputSchema } from "./schema";
 
 // Bump these declarations when tool effects or runtime/assertion policy semantics change.
-export const EVALUATION_POLICY_REVISION = "external-tools-v3";
+export const EVALUATION_POLICY_REVISION = "grounded-knowledge-v4";
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 export const EvaluationManifestSchema = z.object({
   version: z.literal(1), agentId: z.string(), ownerId: z.string(), agentVersion: z.number().int(),
@@ -19,9 +19,8 @@ export const EvaluationManifestSchema = z.object({
   cases: z.array(z.object({ id: z.string(), fixturesHash: digest, assertionsHash: digest }).strict()).min(1).max(5),
 }).strict();
 export type EvaluationManifest = z.infer<typeof EvaluationManifestSchema>;
-export async function evaluationKnowledge(db: Pick<Prisma.TransactionClient, "knowledgeDocument">, ownerId: string) {
-  const documents = await db.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100, select: { id: true, title: true, text: true } });
-  return { documents: documents.length ? documents : structuredClone(knowledgeDocs), sample: documents.length === 0 };
+export async function evaluationKnowledge(db: Pick<Prisma.TransactionClient, "knowledgeDocument">, ownerId: string, agentId?: string) {
+  return visibleKnowledge(db, ownerId, agentId);
 }
 export function buildEvaluationManifest(options: { config: AgentConfig; cases: { id: string }[]; knowledge: Awaited<ReturnType<typeof evaluationKnowledge>>; providerSettings: ProviderSettings; registry: ToolRegistry; workspacePolicy?: unknown }) {
   const { config, knowledge, providerSettings, registry } = options;

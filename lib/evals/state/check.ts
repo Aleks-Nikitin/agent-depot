@@ -12,7 +12,7 @@ export function normalizedSnapshot(value: unknown): StateSnapshot {
 }
 export function fixtureSnapshot(fixtures: EvaluationFixtures, ownerId: string): StateSnapshot {
   return normalizedSnapshot({ tickets: fixtures.tickets.map(row => ({ ...row, ownerId })), orders: fixtures.orders.map(row => ({ ...row, ownerId })),
-    knowledge: fixtures.knowledge.documents.map(row => ({ ...row, ownerId })) });
+    knowledge: fixtures.knowledge.documents.map(({ id, title, text }) => ({ id, title, text, ownerId })) });
 }
 export function stateDiff(before: StateSnapshot, after: StateSnapshot) {
   return Object.fromEntries((Object.keys(before) as (keyof StateSnapshot)[]).map(table => {

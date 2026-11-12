@@ -49,7 +49,7 @@ export async function createIsolatedAttempt(options: { ownerId: string; suiteId:
     async knowledge() {
       active();
       const documents = (await client.query(`SELECT "id","title","text" FROM ${schema}."KnowledgeDocument" WHERE "ownerId"=$1 ORDER BY "id"`, [ownerId])).rows;
-      return { documents, sample: fixtures.knowledge.sample };
+      return { documents: documents.map(doc => ({ ...fixtures.knowledge.documents.find(source => source.id === doc.id), ...doc })), sample: fixtures.knowledge.sample };
     },
     async products() { active(); return structuredClone(fixtures.products); },
     async order(orderId: string) {

@@ -30,7 +30,7 @@ export async function identity(tx: Prisma.TransactionClient, ownerId: string, ag
   const config = AgentConfigSchema.parse(agent.config);
   const workspacePolicy = await lockedPolicy(tx, ownerId, true); assertNarrowed(config, workspacePolicy);
   const cases = await tx.testCase.findMany({ where: { agentId } });
-  const knowledge = await evaluationKnowledge(tx, ownerId); const providerSettings = captureProviderSettings(config);
+  const knowledge = await evaluationKnowledge(tx, ownerId, agentId); const providerSettings = captureProviderSettings(config);
   const manifest = buildEvaluationManifest({ config, cases, knowledge, providerSettings, workspacePolicy, registry: deps.registry });
   return { config, cases, knowledge, providerSettings, workspacePolicy, manifest };
 }

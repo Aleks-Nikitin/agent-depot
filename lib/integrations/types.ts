@@ -16,7 +16,7 @@ export type Tool = {
   run: (args: unknown, context?: { signal: AbortSignal }) => Promise<unknown>;
 };
 
-export type KnowledgeDoc = { id: string; title: string; text: string };
+export type KnowledgeDoc = { id: string; title: string; text: string; version?: number; sourceName?: string | null; contentHash?: string };
 
 export type Product = {
   id: string;

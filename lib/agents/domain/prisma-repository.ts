@@ -1,18 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "@/lib/db/prisma";
 import type { PrismaClient } from "@/generated/prisma/client";
-import { knowledgeDocs } from "@/lib/integrations/data/knowledge";
+import { visibleKnowledge } from "@/lib/knowledge/store";
 import { products } from "@/lib/integrations/data/products";
 import type { DomainRepository } from "./repository";
 import { artifactHash } from "@/lib/agents/releases/fingerprint";
 import { lockedPolicy } from "@/lib/workspaces/policy";
 
-export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb()): DomainRepository {
+export function liveDomainRepository(ownerId: string, db: PrismaClient = getDb(), agentId?: string): DomainRepository {
   return Object.freeze({
     scope: Object.freeze({ kind: "live" as const, ownerId }),
     async knowledge() {
-      const documents = await db.knowledgeDocument.findMany({ where: { ownerId }, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: 100, select: { id: true, title: true, text: true } });
-      return { documents: documents.length ? documents : structuredClone(knowledgeDocs), sample: documents.length === 0 };
+      return visibleKnowledge(db, ownerId, agentId);
     },
     async products() { return structuredClone(products); },
     async order(orderId: string) {

@@ -7,7 +7,7 @@ import { searchKnowledge } from "./knowledgeSearch";
 import { githubTools } from "@/lib/connectors/tools";
 
 export const runtimeTools: ToolDefinition[] = Object.values(integrationTools).map(tool => ({
-  implementationVersion: "domain-tools-v1",
+  implementationVersion: tool.id === "knowledge_search" ? "grounded-knowledge-v2" : "domain-tools-v1",
   id: tool.id, description: tool.description,
   kind: tool.kind,
   domainScoped: ["knowledge_search", "sales_lookup"].includes(tool.id),

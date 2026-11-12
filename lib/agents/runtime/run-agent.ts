@@ -30,7 +30,7 @@ export async function prepareAgentRun(options: {
   enabledTools(config, deps.registry);
   if (deps.domain?.scope.kind === "evaluation" && !isIsolatedRepository(deps.domain)) throw new Error("evaluation_scope_unavailable");
   if (deps.domain && deps.domain.scope.ownerId !== options.ownerId) throw new Error("domain_owner_mismatch");
-  deps = { ...deps, domain: deps.domain ?? liveDomainRepository(options.ownerId) };
+  deps = { ...deps, domain: deps.domain ?? liveDomainRepository(options.ownerId, undefined, config.id) };
   if (deps.driverForConfig) deps = { ...deps, driver: deps.driverForConfig(config, options.providerSettings) };
   deps = { ...deps, checkpointer: deps.checkpointer ?? graphCheckpointer };
   const state: Checkpoint = {

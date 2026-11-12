@@ -221,8 +221,27 @@ model KnowledgeDocument {
   text      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  version Int @default(1)
+  sourceName String?
+  contentHash String @default("")
+  access String @default("workspace")
+  agentIds String[] @default([])
+  revisions KnowledgeRevision[]
 
   @@index([ownerId, createdAt])
+}
+
+model KnowledgeRevision {
+  id String @id @default(uuid())
+  documentId String
+  version Int
+  title String
+  text String
+  sourceName String?
+  contentHash String
+  createdAt DateTime @default(now())
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@unique([documentId, version])
 }
 
 model RecordedEmail {

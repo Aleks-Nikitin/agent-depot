@@ -6,6 +6,7 @@ import { toneBorder, toneSurface, toneText, type Tone } from "@/components/ui/pi
 import type { ModelItem, OutcomeItem, ToolItem } from "@/lib/playground/reduce-events";
 import { describeReason, formatCost, formatDuration, formatTokens, type RunStatus } from "@/lib/runs/format";
 import { IoBox } from "./io-box";
+import { KnowledgeSources } from "./knowledge-sources";
 
 function StepLabel({ tone, step, kind, name }: { tone: Tone; step: number; kind: string; name?: string }) {
   return (
@@ -78,6 +79,7 @@ export function ToolStepCard({ item, step, collapsed }: { item: ToolItem; step: 
           <IoBox label="Output" value={running ? "Waiting for result…" : item.output} />
         </div>
       )}
+      {!collapsed && !running && item.toolId === "knowledge_search" && <KnowledgeSources output={item.output} />}
     </Shell>
   );
 }
